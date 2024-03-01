@@ -1,0 +1,37 @@
+template: sensonet
+products:
+  - brand: Vaillant SensoNet
+    description:
+      generic: VaillantSensoNet
+group: switchsockets
+params:
+  - name: user
+    required: true
+  - name: password
+    required: true
+    mask: true
+  - name: pvusestrategy
+    choice: ['hotwater','heating','hotwater_then_heating']
+  - name: heatingzone
+    default: 2
+  - name: phases
+    default: 3
+  - preset: switchsocket
+render: |
+  type: sensonet
+  {{- if .user }}
+  user: {{ .user }}
+  {{- end }}
+  {{- if .password }}
+  password: {{ .password }}
+  {{- end }}
+  {{- if .pvusestrategy }}
+  pvusestrategy: {{ .pvusestrategy }}
+  {{- end }}
+  {{- if .heatingzone }}
+  heatingzone: {{ .heatingzone }}
+  {{- end }}
+  {{- if .phases }}
+  phases: {{ .phases }}
+  {{- end }}
+  {{ include "switchsocket" . }}
