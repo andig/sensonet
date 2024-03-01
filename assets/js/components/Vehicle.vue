@@ -132,12 +132,16 @@ export default {
 	},
 	computed: {
 		title: function () {
+			if (this.vehicleName) {
+				return this.vehicleName;
+			}
 			return this.vehicle?.title || "";
 		},
 		capacity: function () {
 			return this.vehicle?.capacity || 0;
 		},
 		icon: function () {
+			return this.vehicles[0].icon;
 			return this.vehicle?.icon || "";
 		},
 		minSoc: function () {
