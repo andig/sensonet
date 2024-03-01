@@ -413,8 +413,7 @@ func (site *Site) updatePvMeters() {
 
 	for i, meter := range site.pvMeters {
 		// pv power
-		power, err := meter.CurrentPower()
-
+		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err == nil {
 			// ignore negative values which represent self-consumption
 			site.pvPower += max(0, power)
@@ -422,8 +421,7 @@ func (site *Site) updatePvMeters() {
 				site.log.WARN.Printf("pv %d power: %.0fW is negative - check configuration if sign is correct", i+1, power)
 			}
 		} else {
-			err = fmt.Errorf("pv %d power: %v", i+1, err)
-			site.log.ERROR.Println(err)
+			site.log.ERROR.Printf("pv %d power: %v", i+1, err)
 		}
 
 		// pv energy (production)
@@ -455,9 +453,6 @@ func (site *Site) updateBatteryMeters() error {
 		return nil
 	}
 
-	bo := backoff.NewExponentialBackOff()
-	bo.MaxElapsedTime = time.Second
-
 	var totalCapacity, totalEnergy float64
 
 	site.batteryPower = 0
@@ -466,9 +461,7 @@ func (site *Site) updateBatteryMeters() error {
 	mm := make([]batteryMeasurement, len(site.batteryMeters))
 
 	for i, meter := range site.batteryMeters {
-		bo.Reset()
-
-		power, err := backoff.RetryWithData(meter.CurrentPower, bo)
+		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err == nil {
 			site.batteryPower += power
 			if len(site.batteryMeters) > 1 {
@@ -549,10 +542,7 @@ func (site *Site) updateGridMeter() error {
 		return nil
 	}
 
-	bo := backoff.NewExponentialBackOff()
-	bo.MaxElapsedTime = time.Second
-
-	res, err := backoff.RetryWithData(site.gridMeter.CurrentPower, bo)
+	res, err := backoff.RetryWithData(site.gridMeter.CurrentPower, bo())
 	if err == nil {
 		site.gridPower = res
 		site.log.DEBUG.Printf("grid meter: %.0fW", res)
@@ -601,15 +591,11 @@ func (site *Site) updateGridMeter() error {
 
 // updateMeter updates and publishes single meter
 func (site *Site) updateMeters() error {
-	// errors ignored
+	// TODO parallelize once modbus supports that
 	site.updatePvMeters()
-
-	// power errors returned
 	if err := site.updateBatteryMeters(); err != nil {
 		return err
 	}
-
-	// power errors returned
 	return site.updateGridMeter()
 }
 
