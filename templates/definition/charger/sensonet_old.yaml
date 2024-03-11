@@ -1,45 +1,35 @@
-template: sensonet
+template: sensonet_old
 products:
-  - brand: Vaillant SensoNet
+  - brand: Vaillant SensoNet_old
     description:
-      generic: VaillantSensoNet
+      generic: VaillantSensoNet_old
 group: switchsockets
 params:
   - name: user
     required: true
   - name: password
     required: true
-  - name: realm
-    default: vaillant-germany-b2c
     mask: true
   - name: pvusestrategy
     choice: ['hotwater','heating','hotwater_then_heating']
   - name: heatingzone
-    default: 0
-  - name: heatingtemperatureoffset
     default: 2
   - name: phases
     default: 3
   - preset: switchsocket
 render: |
-  type: sensonet
+  type: sensonet_old
   {{- if .user }}
   user: {{ .user }}
   {{- end }}
   {{- if .password }}
   password: {{ .password }}
   {{- end }}
-  {{- if .realm }}
-  realm: {{ .realm }}
-  {{- end }}
   {{- if .pvusestrategy }}
   pvusestrategy: {{ .pvusestrategy }}
   {{- end }}
   {{- if .heatingzone }}
   heatingzone: {{ .heatingzone }}
-  {{- end }}
-  {{- if .heatingtemperatureoffset }}
-  heatingtemperatureoffset: {{ .heatingtemperatureoffset }}
   {{- end }}
   {{- if .phases }}
   phases: {{ .phases }}

@@ -1,0 +1,35 @@
+template: sensonet_old_vehicle
+products:
+  - brand: Vaillant Sensonet (old version)
+requirements:
+  description:
+    de: |
+      Dies ist ein Fahrzeug-Template für sensonet_old von Vaillant.
+
+      Dies funktioniert nur in Verbindung mit dem charger-Template sensonet_old
+    en: |
+      This is a vehicle template for Vaillant's sensonet_old.
+
+      It only works in combination with the charger template sensonet_old
+params:
+  - name: title
+    required: true
+  - name: capacity
+  - name: phases
+    advanced: true
+  - name: icon
+    default: car
+    advanced: true
+  - preset: vehicle-identify
+render: |
+  type: sensonet_old_vehicle
+  {{- if .title }}
+  title: {{ .title }}
+  {{- end }}
+  {{- if .icon }}
+  icon: {{ .icon }}
+  {{- end }}
+  capacity: {{ .capacity }}
+  {{- if .phases }}
+  phases: {{ .phases }}
+  {{- end }}

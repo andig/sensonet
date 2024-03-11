@@ -1,12 +1,10 @@
-package sensonet
+package sensonet_old
 
 import (
 	"bytes"
 	"fmt"
 	"math"
 	"net/http"
-
-	"strings"
 	"time"
 
 	"github.com/evcc-io/evcc/util/request"
@@ -26,44 +24,26 @@ func NewSwitch(conn *Connection) *Switch {
 
 // Enabled implements the api.Charger interface
 func (sh *Switch) Enabled() (bool, error) {
-	var err error
 	d := sh.Connection
-	// If token expires in less than 3 minutes, a token refresh is called
-	if time.Now().Add(time.Duration(3 * int(time.Minute))).After(d.tokenExpiresAt) {
-		d.tokenRes, err = d.refreshToken()
-		if err != nil {
-			err = fmt.Errorf("could not refresh token. error: %s", err)
-			return false, err
-		}
-		//d.log.DEBUG.Println("Refresh token successful")
-		d.tokenExpiresAt = time.Now().Add(time.Duration(d.tokenRes.ExpiresIn * int(time.Second)))
-		d.log.DEBUG.Printf("Refreshed token expires at: %02d:%02d:%02d", d.tokenExpiresAt.Hour(), d.tokenExpiresAt.Minute(), d.tokenExpiresAt.Second())
-	}
-
 	res, err := d.statusCache.Get()
 	if err != nil {
 		d.log.ERROR.Println("Switch.Enabled. Error: ", err)
 		return false, err
 	}
-	d.log.DEBUG.Println("Status last read from myVaillant portal at:", time.Unix(res.Timestamp, 0))
-	if d.currentQuickmode != "" {
-		d.log.DEBUG.Println("In Switch.Enabled: Connection.currentQuickmode:", d.currentQuickmode, "started at:", time.Unix(d.quickmodeStarted, 0))
-	} else {
-		d.log.DEBUG.Println("In Switch.Enabled: Connection.currentQuickmode not set. Timestamp:", time.Unix(d.quickmodeStarted, 0))
-	}
+	d.log.DEBUG.Println("Switch.Enabled. d.currentQuickmode:", d.currentQuickmode, "started at:", time.Unix(d.quickmodeStarted, 0))
 	if d.currentQuickmode == QUICKMODE_HOTWATER {
-		d.log.DEBUG.Println("In Switch.Enabled: Hotwater quick mode:", res.Hotwater.CurrentQuickmode)
-		if (res.Hotwater.CurrentQuickmode == "") || (res.Hotwater.CurrentQuickmode == "REGULAR") {
-			d.log.DEBUG.Println("In Switch.Enabled: res.Hotwater.CurrentQuickmode should be active but is off")
+		d.log.DEBUG.Println("Switch.Enabled. Hotwater quick mode:", res.Hotwater.CurrentQuickmode)
+		if res.Hotwater.CurrentQuickmode == "" {
+			d.log.DEBUG.Println("Switch.Enabled. res.Hotwater.CurrentQuickmode should be active but is off")
 			//return false, nil
 		}
 	}
 	if d.currentQuickmode == QUICKMODE_HEATING {
 		for _, z := range res.Zones {
-			if z.Index == d.heatingZone {
-				d.log.DEBUG.Println("In Switch.Enabled: Zone quick mode:", z.CurrentQuickmode, ", Temperature Setpoint:", z.QuickVeto.TemperatureSetpoint, "(", d.quickVetoSetPoint, "), Expires at:", d.quickVetoExpiresAt)
-				if (z.CurrentQuickmode == "") || (z.CurrentQuickmode == "NONE") {
-					d.log.DEBUG.Println("In Switch.Enabled: z.CurrentQuickmode should be active but is off")
+			if z.ID == fmt.Sprintf("Control_ZO%01d", d.heatingZone) {
+				d.log.DEBUG.Println("Switch.Enabled. Zone quick mode:", z.CurrentQuickmode, ", Temperature Setpoint:", z.QuickVeto.TemperatureSetpoint, ", Expires at:", z.QuickVeto.ExpiresAt)
+				if z.CurrentQuickmode == "" {
+					d.log.DEBUG.Println("Switch.Enabled. z.CurrentQuickmode should be active but is off")
 					//return false, nil
 				}
 			}
@@ -74,6 +54,8 @@ func (sh *Switch) Enabled() (bool, error) {
 
 // Enable implements the api.Charger interface
 func (sh *Switch) Enable(enable bool) error {
+	var err error
+
 	d := sh.Connection
 	//Reset status cache and get new reports from sensonet before starting or stopping quick modes
 	d.reset()
@@ -91,7 +73,7 @@ func (sh *Switch) Enable(enable bool) error {
 
 		switch whichQuickMode {
 		case 1:
-			err = sh.startHotWaterBoost(&res)
+			err = sh.startHotWaterBoost()
 			if err == nil {
 				d.currentQuickmode = QUICKMODE_HOTWATER
 				d.quickmodeStarted = time.Now().Unix()
@@ -110,7 +92,7 @@ func (sh *Switch) Enable(enable bool) error {
 	} else {
 		switch d.currentQuickmode {
 		case QUICKMODE_HOTWATER:
-			err = sh.stopHotWaterBoost(&res)
+			err = sh.stopHotWaterBoost()
 			if err == nil {
 				d.log.DEBUG.Println("Stopping Quick Mode", res.Hotwater.CurrentQuickmode)
 			}
@@ -126,19 +108,18 @@ func (sh *Switch) Enable(enable bool) error {
 		d.quickmodeStarted = time.Now().Unix()
 	}
 	//Reset status cache and get new reports from sensonet
-	/*d.reset()
+	d.reset()
 	res, err1 := d.statusCache.Get()
 	if err1 != nil {
 		err1 = fmt.Errorf("could not get current live and system report after starting/stopping quick modes: %s", err1)
 		return err1
-	}*/
+	}
 	d.log.DEBUG.Println("Switch.Enable. Hotwater quick mode:", res.Hotwater.CurrentQuickmode)
 	d.onoff = enable
 	return err
 }
 
 // CurrentPower implements the api.Meter interface
-// Those are just dummy values. For eal values, an energy meter like Shelly 3EM is necessary
 func (sh *Switch) CurrentPower() (float64, error) {
 	var power float64
 
@@ -157,15 +138,15 @@ func (sh *Switch) CurrentPower() (float64, error) {
 	return power, nil
 }
 
-func (sh *Switch) startHotWaterBoost(relData *Vr921RelevantDataStruct) error {
+func (sh *Switch) startHotWaterBoost() error {
 	c := sh.Connection
-	urlHotwaterBoost := API_URL_BASE + fmt.Sprintf(HOTWATERBOOST_URL, c.systemId, relData.Hotwater.Index)
-	req, err := http.NewRequest("POST", urlHotwaterBoost, strings.NewReader(""))
+	urlHotwaterBoost := FACILITIES_URL + "/" + c.serialNumber + HOTWATERBOOST_URL
+	req, err := http.NewRequest("PUT", urlHotwaterBoost, bytes.NewBuffer(nil))
 	if err != nil {
 		err = fmt.Errorf("client: could not create request: %s", err)
 		return err
 	}
-	req.Header = c.getSensonetHttpHeader()
+	req.Header = getSensonetHttpHeader()
 	var resp []byte
 	resp, err = c.DoBody(req)
 	if err != nil {
@@ -176,15 +157,15 @@ func (sh *Switch) startHotWaterBoost(relData *Vr921RelevantDataStruct) error {
 	return err
 }
 
-func (sh *Switch) stopHotWaterBoost(relData *Vr921RelevantDataStruct) error {
+func (sh *Switch) stopHotWaterBoost() error {
 	c := sh.Connection
-	urlHotwaterBoost := API_URL_BASE + fmt.Sprintf(HOTWATERBOOST_URL, c.systemId, relData.Hotwater.Index)
+	urlHotwaterBoost := FACILITIES_URL + "/" + c.serialNumber + HOTWATERBOOST_URL
 	req, err := http.NewRequest("DELETE", urlHotwaterBoost, bytes.NewBuffer(nil))
 	if err != nil {
 		err = fmt.Errorf("client: could not create request: %s", err)
 		return err
 	}
-	req.Header = c.getSensonetHttpHeader()
+	req.Header = getSensonetHttpHeader()
 	var resp []byte
 	resp, err = c.DoBody(req)
 	if err != nil {
@@ -197,53 +178,50 @@ func (sh *Switch) stopHotWaterBoost(relData *Vr921RelevantDataStruct) error {
 
 func (sh *Switch) startZoneQuickVeto(relData *Vr921RelevantDataStruct) error {
 	c := sh.Connection
-	urlZoneQuickVeto := API_URL_BASE + fmt.Sprintf(ZONEQUICKVETO_URL, c.systemId, c.heatingZone)
+	urlZoneQuickVeto := FACILITIES_URL + "/" + c.serialNumber + fmt.Sprintf(ZONEQUICKVETO_URL, c.heatingZone)
 	temperatureSetpoint := 0.0
 	for _, z := range relData.Zones {
-		if z.Index == c.heatingZone {
+		if z.ID == fmt.Sprintf("Control_ZO%01d", c.heatingZone) {
 			temperatureSetpoint = z.CurrentDesiredSetpoint
 		}
 	}
 	if temperatureSetpoint == 0.0 {
-		c.log.ERROR.Printf("Could not detect current desired setpoint for zone: %01d. Probably inactive due to time program.\n", c.heatingZone)
+		c.log.ERROR.Printf("Could not detect current desired setpoint for zone: Control_ZO%01d. Probably inactive due to time program.\n", c.heatingZone)
 		temperatureSetpoint = 20.0
 	}
 	// Temperature Setpoint for quick veto is rounded to 0.5 °C
 	vetoSetpoint := float32(math.Round(2*(temperatureSetpoint+c.heatingTemperatureOffset)) / 2.0)
 	data := map[string]float32{
-		"desiredRoomTemperatureSetpoint": float32(vetoSetpoint),
-		"duration":                       float32(0.5), // duration for quick veto is 0,5 hours
+		"temperature_setpoint": float32(vetoSetpoint),
+		"duration":             float32(0.5), // duration for quick veto is 0,5 hours
 		//		"duration":             float32(c.heatingVetoDuration) / 30.0,
 	}
-	req, err := http.NewRequest("POST", urlZoneQuickVeto, request.MarshalJSON(data))
+	req, err := http.NewRequest("PUT", urlZoneQuickVeto, request.MarshalJSON(data))
 	if err != nil {
 		err = fmt.Errorf("client: could not create request: %s", err)
 		return err
 	}
-	req.Header = c.getSensonetHttpHeader()
-	req.Header.Set("Content-Type", "application/json")
+	req.Header = getSensonetHttpHeader()
 	var resp []byte
-	c.log.DEBUG.Printf("Sending POST request to: %s\n", urlZoneQuickVeto)
+	c.log.DEBUG.Printf("Sending PUT request to: %s\n", urlZoneQuickVeto)
 	resp, err = c.DoBody(req)
 	if err != nil {
 		err = fmt.Errorf("could not start quick veto. Error: %s", err)
 		c.log.DEBUG.Printf("Response: %s\n", resp)
 		return err
 	}
-	c.quickVetoSetPoint = vetoSetpoint
-	c.quickVetoExpiresAt = (time.Now().Add(time.Duration(0.5 * 30 * int(time.Minute)))).String()
 	return err
 }
 
 func (sh *Switch) stopZoneQuickVeto() error {
 	c := sh.Connection
-	urlZoneQuickVeto := API_URL_BASE + fmt.Sprintf(ZONEQUICKVETO_URL, c.systemId, c.heatingZone)
+	urlZoneQuickVeto := FACILITIES_URL + "/" + c.serialNumber + fmt.Sprintf(ZONEQUICKVETO_URL, c.heatingZone)
 	req, err := http.NewRequest("DELETE", urlZoneQuickVeto, bytes.NewBuffer(nil))
 	if err != nil {
 		err = fmt.Errorf("client: could not create request: %s", err)
 		return err
 	}
-	req.Header = c.getSensonetHttpHeader()
+	req.Header = getSensonetHttpHeader()
 	var resp []byte
 	c.log.DEBUG.Printf("Sending DELETE request to: %s\n", urlZoneQuickVeto)
 	resp, err = c.DoBody(req)
@@ -252,7 +230,5 @@ func (sh *Switch) stopZoneQuickVeto() error {
 		c.log.DEBUG.Printf("Response: %s\n", resp)
 		return err
 	}
-	c.quickVetoSetPoint = 0
-	c.quickVetoExpiresAt = ""
 	return err
 }

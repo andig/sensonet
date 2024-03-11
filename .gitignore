@@ -38,3 +38,5 @@ asset-stats.html
 /test-results/
 /playwright-report/
 /playwright/.cache/
+debug_sensonet_reldata.txt
+debug_sensonet_system.txt
