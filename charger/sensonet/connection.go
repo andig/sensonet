@@ -1,11 +1,16 @@
 package sensonet
 
 import (
-	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -13,17 +18,22 @@ import (
 	"github.com/evcc-io/evcc/provider"
 	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/request"
+	"github.com/thanhpk/randstr"
 )
 
 // Connection is the Sensonet connection
 type Connection struct {
 	*request.Helper
-	log           *util.Logger
-	token         string
-	serialNumber  string
-	pvUseStrategy string
-	heatingZone   int32
-	phases        int32
+	log            *util.Logger
+	realm          string
+	tokenRes       TokenRequestStruct
+	code           string
+	codeVerifier   string
+	tokenExpiresAt time.Time
+	systemId       string
+	pvUseStrategy  string
+	heatingZone    int
+	phases         int
 	//	heatingVetoDuration      int32
 	heatingTemperatureOffset float64
 	statusCache              provider.Cacheable[Vr921RelevantDataStruct]
@@ -31,21 +41,27 @@ type Connection struct {
 	currentQuickmode         string
 	quickmodeStarted         int64
 	onoff                    bool
+	quickVetoSetPoint        float32
+	quickVetoExpiresAt       string
 }
 
 // Global variable SensoNetConn is used to make data available in vehicle vks (not needed without vehicle vks)
 var SensoNetConn *Connection
 
 // NewConnection creates a new Sensonet device connection.
-func NewConnection(user, password, pvUseStrategy string, heatingZone, phases int32, heatingTemperatureOffset float64) (*Connection, error) {
+func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, phases int, heatingTemperatureOffset float64) (*Connection, error) {
 
 	log := util.NewLogger("sensonet")
 	client := request.NewHelper(log)
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 
 	conn := &Connection{
 		Helper: client,
 	}
-	conn.cache = 5 * time.Minute
+	conn.cache = 2 * time.Minute
+	conn.realm = realm
 	conn.pvUseStrategy = pvUseStrategy
 	conn.heatingZone = heatingZone
 	conn.phases = phases
@@ -54,7 +70,7 @@ func NewConnection(user, password, pvUseStrategy string, heatingZone, phases int
 	conn.log = log
 	conn.currentQuickmode = ""
 	conn.quickmodeStarted = time.Now().Unix()
-	SensoNetConn = conn //this is not needed without vehicle vks
+	SensoNetConn = conn //this is not needed without vehicle sensonet_vehicle
 
 	var err error
 	conn.Client.Jar, err = cookiejar.New(nil)
@@ -62,32 +78,49 @@ func NewConnection(user, password, pvUseStrategy string, heatingZone, phases int
 		err = fmt.Errorf("could not reset cookie jar. error: %s", err)
 		return conn, err
 	}
-	conn.token, err = getToken(conn, user, password)
+
+	err = conn.loginAndGetToken(user, password)
 	if err != nil {
-		err = fmt.Errorf("could not get token. error: %s", err)
+		err = fmt.Errorf("could not login and get token. error: %s", err)
 		return conn, err
 	}
-	conn.log.DEBUG.Printf("New Token: %s\n", conn.token)
-	err = authenticate(conn, user, conn.token)
+
+	conn.systemId, err = conn.getHomes()
 	if err != nil {
-		err = fmt.Errorf("could not authenticate. error: %s", err)
+		err = fmt.Errorf("could not get systemId. error: %s", err)
 		return conn, err
 	}
-	conn.serialNumber, err = getAndExtractFacilitiesList(conn)
-	if err != nil {
-		err = fmt.Errorf("could not get serial number. error: %s", err)
-		return conn, err
-	}
+
 	conn.statusCache = provider.ResettableCached(func() (Vr921RelevantDataStruct, error) {
 		var res Vr921RelevantDataStruct
-		err := getCurrentSystem(conn, &res)
-		if err == nil {
-			err = getCurrentLiveReport(conn, &res)
-		}
+		err := conn.getSystem(&res)
+		/*if err == nil {
+			err = conn.getCurrentLiveReport(&res)
+		}*/
 		return res, err
 	}, conn.cache)
 
 	return conn, nil
+}
+
+func (c *Connection) loginAndGetToken(user, password string) error {
+	var err error
+	c.code, c.codeVerifier, err = c.getCode(user, password)
+	if err != nil {
+		err = fmt.Errorf("could not get code. error: %s", err)
+		return err
+	}
+	c.log.DEBUG.Printf("New Code: %s\n", c.code)
+	c.tokenRes, err = c.getToken()
+	if err != nil {
+		err = fmt.Errorf("could not get token. error: %s", err)
+		return err
+	}
+	c.log.DEBUG.Println("Got new Token:")
+	//c.log.DEBUG.Printf("New Token: %s\n", c.token)
+	c.tokenExpiresAt = time.Now().Add(time.Duration(c.tokenRes.ExpiresIn * int(time.Second)))
+	c.log.DEBUG.Printf("Token expires at: %02d:%02d:%02d", c.tokenExpiresAt.Hour(), c.tokenExpiresAt.Minute(), c.tokenExpiresAt.Second())
+	return err
 }
 
 func (c *Connection) reset() {
@@ -95,112 +128,206 @@ func (c *Connection) reset() {
 	//c.meterCache.Reset()
 }
 
-func getSensonetHttpHeader() http.Header {
+func (c *Connection) getSensonetHttpHeader() http.Header {
 	// Returns the http header for http requests to sensonet
 	return http.Header{
-		"content-type":        {"application/json; charset=UTF-8"},
-		"Accept-Encoding":     {"gzip"},
-		"Accept":              {"application/json"},
-		"Vaillant-Mobile-App": {"multiMATIC v2.1.45 b389 (Android)"},
-		"Cache-Control":       {"no-cache"},
-		"Pragma":              {"no-cache"},
+		"Authorization":             {"Bearer " + c.tokenRes.AccessToken},
+		"x-app-identifier":          {"VAILLANT"},
+		"Accept-Language":           {"en-GB"},
+		"Accept":                    {"application/json, text/plain, */*"},
+		"x-client-locale":           {"en-GB"},
+		"x-idm-identifier":          {"KEYCLOAK"},
+		"ocp-apim-subscription-key": {"1e0a2f3511fb4c5bbb1c7f9fedd20b1c"},
+		"User-Agent":                {"okhttp/4.9.2"},
+		"Connection":                {"keep-alive"},
+		//"Content-Type":              {"application/json"},
 	}
 }
 
-// VR921 functions
-func getToken(c *Connection, user, pasword string) (string, error) {
-	params, err := json.Marshal(map[string]string{
-		"smartphoneId": "pymultiMATIC",
-		"username":     user,
-		"password":     pasword,
-	})
-	if err != nil {
-		err = fmt.Errorf("error while json.Marshal. Error: %s", err)
-		return "", err
-	}
+func generateCode() (string, string) {
+	codeVerifier := randstr.String(128)
+	sha2 := sha256.New()
+	io.WriteString(sha2, codeVerifier)
+	codeChallenge := base64.RawURLEncoding.EncodeToString(sha2.Sum(nil))
+	return codeVerifier, codeChallenge
+}
 
-	urlnewtoken := TOKEN_URL
-	req, err1 := http.NewRequest("POST", urlnewtoken, bytes.NewBuffer(params))
+func computeLoginUrl(loginHtlm, realm string) string {
+	loginUrl := fmt.Sprintf(LOGIN_URL, realm)
+	index1 := strings.Index(loginHtlm, "?")
+	index2 := strings.Index(loginHtlm[index1:], "\"")
+	loginUrl = loginUrl + loginHtlm[index1:index1+index2]
+	/*result = re.search(fmt.Sprintf(LOGIN_URL, realm)+ r"\?([^\"]*)",
+		login_html,
+	)*/
+	return html.UnescapeString(loginUrl)
+}
+
+func (c *Connection) getCode(user, password string) (string, string, error) {
+	codeVerifier, codeChallenge := generateCode()
+	code := ""
+	auth_querystring := url.Values{}
+	auth_querystring.Set("response_type", "code")
+	auth_querystring.Set("client_id", CLIENT_ID)
+	auth_querystring.Set("code", "code_challenge")
+	auth_querystring.Set("redirect_uri", "enduservaillant.page.link://login")
+	auth_querystring.Set("code_challenge_method", "S256")
+	auth_querystring.Set("code_challenge", codeChallenge)
+
+	urlnewcode := fmt.Sprintf(AUTH_URL, c.realm) + "?" + auth_querystring.Encode()
+
+	req, err1 := http.NewRequest("GET", urlnewcode, nil)
 	if err1 != nil {
 		err1 = fmt.Errorf("client: could not create request: %s", err1)
-		return "", err1
+		return "", "", err1
 	}
-	req.Header = getSensonetHttpHeader()
-	var data map[string]map[string]interface{}
-	err = c.DoJSON(req, &data)
+
+	resp, err := c.Do(req)
+	if err != nil {
+		err = fmt.Errorf("could not get code. error: %s", err)
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	loginHtml, err := io.ReadAll(resp.Body)
+	if err != nil {
+		err = fmt.Errorf("could not read response body. error: %s", err)
+		return "", "", err
+	}
+	if val, ok := resp.Header["Location"]; ok {
+		parsedUrl, _ := url.Parse(val[0])
+		code = parsedUrl.Query()["code"][0]
+	}
+	if code != "" {
+		c.log.DEBUG.Println("Got code from first http request: ", code)
+		return code, codeVerifier, err
+	}
+
+	loginUrl := computeLoginUrl(string(loginHtml), c.realm)
+	if loginUrl == "" {
+		err = api.ErrMissingCredentials
+		err = fmt.Errorf("could not compute login url. error: %s", err)
+		return "", "", err
+	}
+	c.log.DEBUG.Printf("Got login url %s", loginUrl)
+
+	params := url.Values{}
+	params.Set("username", user)
+	params.Set("password", password)
+	params.Set("credentialId", "")
+	req1, err3 := http.NewRequest("POST", loginUrl, strings.NewReader(params.Encode()))
+	if err3 != nil {
+		err3 = fmt.Errorf("getCode: could not create request: %s", err3)
+		return "", "", err3
+	}
+	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err = c.Do(req1)
+	if err != nil {
+		err = fmt.Errorf("could not get code. error: %s", err)
+		return "", "", err
+	}
+	if val, ok := resp.Header["Location"]; ok {
+		parsedUrl, _ := url.Parse(val[0])
+		code = parsedUrl.Query()["code"][0]
+		return code, codeVerifier, nil
+	}
+	err = api.ErrMissingCredentials
+	err = fmt.Errorf("could not get code from second http request. error: %s", err)
+	return "", "", err
+}
+
+func (c *Connection) getToken() (TokenRequestStruct, error) {
+	var tokenRes TokenRequestStruct
+	params := url.Values{}
+	params.Set("grant_type", "authorization_code")
+	params.Set("client_id", CLIENT_ID)
+	params.Set("code", c.code)
+	params.Set("code_verifier", c.codeVerifier)
+	params.Set("redirect_uri", "enduservaillant.page.link://login")
+
+	urlnewtoken := fmt.Sprintf(TOKEN_URL, c.realm)
+	req1, err := http.NewRequest("POST", urlnewtoken, strings.NewReader(params.Encode()))
+	if err != nil {
+		err = fmt.Errorf("getToken: could not create request: %s", err)
+		return tokenRes, err
+	}
+	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	err = c.DoJSON(req1, &tokenRes)
 	if err != nil {
 		err = fmt.Errorf("could not get token. error: %s", err)
+		return tokenRes, err
+	}
+	return tokenRes, nil
+}
+
+func (c *Connection) refreshToken() (TokenRequestStruct, error) {
+	var tokenRes TokenRequestStruct
+	params := url.Values{}
+	params.Set("grant_type", "refresh_token")
+	params.Set("client_id", CLIENT_ID)
+	params.Set("refresh_token", c.tokenRes.RefreshToken)
+
+	urlnewtoken := fmt.Sprintf(TOKEN_URL, c.realm)
+	req1, err := http.NewRequest("POST", urlnewtoken, strings.NewReader(params.Encode()))
+	if err != nil {
+		err = fmt.Errorf("refreshToken: could not create request: %s", err)
+		return tokenRes, err
+	}
+	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	err = c.DoJSON(req1, &tokenRes)
+	if err != nil {
+		err = fmt.Errorf("could not refresh token. error: %s", err)
+		return tokenRes, err
+	}
+	return tokenRes, nil
+}
+
+func (c *Connection) getHomes() (string, error) {
+	urlGetHomes := API_URL_BASE + "/homes" // hier muss ggf. noch was ergänzt werden
+	req, err := http.NewRequest("GET", urlGetHomes, nil)
+	if err != nil {
+		err = fmt.Errorf("error getting homes list: %s", err)
 		return "", err
 	}
-	return data["body"]["authToken"].(string), nil
-}
-
-func authenticate(c *Connection, user, token string) error {
-	params, err := json.Marshal(map[string]string{
-		"smartphoneId": "pymultiMATIC",
-		"username":     user,
-		"authToken":    token,
-	})
+	req.Header = c.getSensonetHttpHeader()
+	var res HomesStruct
+	err = c.DoJSON(req, &res)
 	if err != nil {
-		err = fmt.Errorf("error while json.Marshal. error: %s", err)
-		return err
-	}
-
-	urlauthenticate := AUTH_URL
-	req, err1 := http.NewRequest("POST", urlauthenticate, bytes.NewBuffer(params))
-	if err1 != nil {
-		err1 = fmt.Errorf("client: could not create request: %s", err1)
-		return err1
-	}
-	req.Header = getSensonetHttpHeader()
-	var resp []byte
-	resp, err = c.DoBody(req)
-	if err != nil {
-		err = fmt.Errorf("could not authenticate. error: %s", err)
-		c.log.DEBUG.Printf("Response: %s\n", resp)
-		return err
-	}
-	return err
-}
-
-func getAndExtractFacilitiesList(c *Connection) (string, error) {
-	urlFacilities := FACILITIES_URL
-	var res FacilitiesListStruct
-	err := c.GetJSON(urlFacilities, &res)
-	if err != nil {
-		err = fmt.Errorf("error getting facilities list: %s", err)
+		err = fmt.Errorf("error getting homes list: %s", err)
 		return "", err
 	}
-	serialNumber := res.Body.FacilitiesList[0].SerialNumber
-	return serialNumber, err
+	systemId := res[0].SystemID
+	return systemId, err
 }
 
-func getAndExtractSystem(c *Connection, relData *Vr921RelevantDataStruct) error {
-	urlSystem := FACILITIES_URL + "/" + c.serialNumber + SYSTEM_URL
-	var system *SystemStruct
-	err := c.GetJSON(urlSystem, &system)
+func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
+	//controlIdentifier := c.getControlIdentifier()
+	systemUrl := API_URL_BASE + fmt.Sprintf("/systems/%s/tli", c.systemId)
+	req, err := http.NewRequest("GET", systemUrl, nil)
 	if err != nil {
-		err = fmt.Errorf("error getting system: %s", err)
+		err = fmt.Errorf("error perparing request for systems: %s", err)
 		return err
 	}
+	req.Header = c.getSensonetHttpHeader()
+	var system SystemStruct
+	err = c.DoJSON(req, &system)
+	if err != nil {
+		err = fmt.Errorf("error getting systems: %s", err)
+		return err
+	}
+
 	relData.Timestamp = time.Now().Unix()
-	relData.Status.Datetime = system.Body.Status.Datetime
-	relData.Status.OutsideTemperature = system.Body.Status.OutsideTemperature
-	relData.Hotwater.HotwaterTemperatureSetpoint = system.Body.Dhw.Hotwater.Configuration.HotwaterTemperatureSetpoint
-	relData.Hotwater.OperationMode = system.Body.Dhw.Hotwater.Configuration.OperationMode
-	if relData.Hotwater.CurrentQuickmode != system.Body.Dhw.Configuration.CurrentQuickmode {
-		relData.Hotwater.CurrentQuickmode = system.Body.Dhw.Configuration.CurrentQuickmode
-		if system.Body.Dhw.Configuration.CurrentQuickmode == "HOTWATER_BOOST" {
+	relData.Status.OutsideTemperature = system.State.System.OutdoorTemperature
+	relData.Status.SystemFlowTemperature = system.State.System.SystemFlowTemperature
+	relData.Hotwater.HotwaterTemperatureSetpoint = system.Configuration.Dhw[0].TappingSetpoint
+	relData.Hotwater.HotwaterLiveTemperature = system.State.Dhw[0].CurrentDhwTemperature
+	relData.Hotwater.OperationMode = system.Configuration.Dhw[0].OperationModeDhw
+	relData.Hotwater.Index = system.Configuration.Dhw[0].Index
+	if relData.Hotwater.CurrentQuickmode != system.State.Dhw[0].CurrentSpecialFunction {
+		relData.Hotwater.CurrentQuickmode = system.State.Dhw[0].CurrentSpecialFunction
+		if system.State.Dhw[0].CurrentSpecialFunction == "CYLINDER_BOOST" {
 			c.currentQuickmode = QUICKMODE_HOTWATER
 			c.quickmodeStarted = time.Now().Unix()
 			c.onoff = true
-		}
-	}
-	for _, systemResource := range system.Meta.ResourceState {
-		//looking for "dhw/configuration" in link
-		if strings.Contains(systemResource.Link.ResourceLink, "dhw/configuration") {
-			relData.Hotwater.HotwaterSystemState = systemResource.State
-			relData.Hotwater.HotwaterSystemTimestamp = systemResource.Timestamp
 		}
 	}
 
@@ -208,90 +335,89 @@ func getAndExtractSystem(c *Connection, relData *Vr921RelevantDataStruct) error 
 	if len(relData.Zones) == 0 {
 		relData.Zones = make([]Vr921RelevantDataZonesStruct, 0)
 	}
-	for i, systemBodyZone := range system.Body.Zones {
+	for i, systemStateZone := range system.State.Zones {
 		if len(relData.Zones) <= i {
 			//If relData.Zones array is not big enough, new elements are appended, especially at first ExtractSystem call
 			//At the moment, relData.Zones is not shortened, if later GetSystem calls returns less system.Body.Zones
 			zone := Vr921RelevantDataZonesStruct{}
 			relData.Zones = append(relData.Zones, zone)
 		}
-		relData.Zones[i].Name = systemBodyZone.Configuration.Name
-		relData.Zones[i].ID = systemBodyZone.ID
-		relData.Zones[i].ActiveFunction = systemBodyZone.Configuration.ActiveFunction
-		relData.Zones[i].Enabled = systemBodyZone.Configuration.Enabled
-		relData.Zones[i].OperationMode = systemBodyZone.Heating.Configuration.OperationMode
-		relData.Zones[i].CurrentDesiredSetpoint = systemBodyZone.Configuration.CurrentDesiredSetpoint
-		relData.Zones[i].CurrentQuickmode = systemBodyZone.Configuration.CurrentQuickmode
-		relData.Zones[i].QuickVeto.ExpiresAt = systemBodyZone.Configuration.QuickVeto.ExpiresAt
-		relData.Zones[i].QuickVeto.TemperatureSetpoint = systemBodyZone.Configuration.QuickVeto.TemperatureSetpoint
-		relData.Zones[i].InsideTemperature = systemBodyZone.Configuration.InsideTemperature
-		if relData.Zones[i].CurrentQuickmode != "" {
+		// Looking for the matching system configuration zone
+		found := -1
+		for j, systemConfigurationZone := range system.Configuration.Zones {
+			if systemStateZone.Index == systemConfigurationZone.Index {
+				found = j
+				break
+			}
+		}
+		if found < 0 {
+			c.log.ERROR.Println("System.State.Zones[] und System.Configuration.Zones[] do not match")
+			return err
+		}
+		systemConfigurationZone := system.Configuration.Zones[found]
+
+		// Looking for the matching system state circuit
+		found = -1
+		for j, systemStateCircuit := range system.State.Circuits {
+			if systemStateZone.Index == systemStateCircuit.Index {
+				found = j
+				break
+			}
+		}
+		if found < 0 {
+			c.log.ERROR.Println("System.State.Zones[] und System.State.Circuits[] do not match")
+			return err
+		}
+		systemStateCircuit := system.State.Circuits[found]
+
+		relData.Zones[i].Name = systemConfigurationZone.General.Name
+		relData.Zones[i].Index = systemStateZone.Index
+		//relData.Zones[i].ActiveFunction = systemStateZone.Configuration.ActiveFunction
+		//relData.Zones[i].Enabled = systemStateZone.Configuration.Enabled
+		relData.Zones[i].OperationMode = systemConfigurationZone.Heating.OperationModeHeating
+		relData.Zones[i].CurrentDesiredSetpoint = systemStateZone.DesiredRoomTemperatureSetpoint
+		relData.Zones[i].CurrentQuickmode = systemStateZone.CurrentSpecialFunction
+		if systemStateZone.CurrentSpecialFunction == "QUICK_VETO" {
+			//relData.Zones[i].QuickVeto.ExpiresAt = systemStateZone.Configuration.QuickVeto.ExpiresAt
+			relData.Zones[i].QuickVeto.TemperatureSetpoint = systemStateZone.DesiredRoomTemperatureSetpoint
+			c.quickVetoSetPoint = float32(systemStateZone.DesiredRoomTemperatureSetpoint)
+		} else {
+			relData.Zones[i].QuickVeto.ExpiresAt = ""
+			relData.Zones[i].QuickVeto.TemperatureSetpoint = 0
+		}
+		relData.Zones[i].InsideTemperature = systemStateZone.CurrentRoomTemperature
+		relData.Zones[i].CurrentCircuitFlowTemperature = systemStateCircuit.CurrentCircuitFlowTemperature
+		if relData.Zones[i].CurrentQuickmode != "NONE" {
 			c.currentQuickmode = QUICKMODE_HEATING
 			c.quickmodeStarted = time.Now().Unix()
 			c.onoff = true
 		}
 	}
-	return err
-}
+	//Added by WW: This block is used during development to analyse the system report return from the Vaillant portal
+	c.log.DEBUG.Println("Writing debug information to files debug_sensonet_system.txt and debug_sensonet_reldata.txt")
+	fo, ioerr := os.Create("debug_sensonet_system.txt")
+	if ioerr != nil {
+		panic(ioerr)
+	}
+	bytes, _ := json.MarshalIndent(system, "", "  ")
+	_, ioerr = fo.Write(bytes)
+	if ioerr != nil {
+		panic(ioerr)
+	}
+	fo.Close()
+	fo, ioerr = os.Create("debug_sensonet_reldata.txt")
+	if ioerr != nil {
+		panic(ioerr)
+	}
+	bytes, _ = json.MarshalIndent(relData, "", "  ")
+	_, ioerr = fo.Write(bytes)
+	if ioerr != nil {
+		panic(ioerr)
+	}
+	fo.Close()
+	//Added by WW: End of block
 
-func getAndExtractLiveReport(c *Connection, relData *Vr921RelevantDataStruct) error {
-	urlLiveReport := FACILITIES_URL + "/" + c.serialNumber + LIVEREPORT_URL
-	var liveReport *LiveReportStruct
-	err := c.GetJSON(urlLiveReport, &liveReport)
-	if err != nil {
-		err = fmt.Errorf("error getting system: %s", err)
-		return err
-	}
-	relData.Timestamp = time.Now().Unix()
-	for deviceNo, liveReportDevice := range liveReport.Body.Devices {
-		//looking for device ID Control_DHW
-		if liveReportDevice.ID == "Control_DHW" {
-			for _, liveReportDeviceReport := range liveReportDevice.Reports {
-				//looking for report ID DomesticHotWaterTankTemperature
-				if liveReportDeviceReport.ID == "DomesticHotWaterTankTemperature" {
-					relData.Hotwater.HotwaterLiveTemperature = liveReportDeviceReport.Value
-				}
-			}
-			relData.Hotwater.HotwaterLiveState = liveReport.Meta.ResourceState[deviceNo].State
-			relData.Hotwater.HotwaterLiveTimestamp = liveReport.Meta.ResourceState[deviceNo].Timestamp
-		}
-	}
-	return err
-}
-
-func getCurrentSystem(c *Connection, relData *Vr921RelevantDataStruct) error {
-	lastOperationMode := ""
-	nbOfIdenticalVals := 0
-	var err error
-	for (relData.Hotwater.HotwaterSystemState != "SYNCED") && (nbOfIdenticalVals < 3) {
-		err = getAndExtractSystem(c, relData)
-		if err != nil {
-			return err
-		}
-		if relData.Hotwater.OperationMode != lastOperationMode {
-			lastOperationMode = relData.Hotwater.OperationMode
-		} else {
-			nbOfIdenticalVals = nbOfIdenticalVals + 1
-		}
-	}
-	return err
-}
-
-func getCurrentLiveReport(c *Connection, relData *Vr921RelevantDataStruct) error {
-	lastMeasuredTemp := 0.00
-	nbOfIdenticalVals := 0
-	var err error
-	for (relData.Hotwater.HotwaterLiveState != "SYNCED") && (nbOfIdenticalVals < 3) {
-		err = getAndExtractLiveReport(c, relData)
-		if err != nil {
-			return err
-		}
-		if relData.Hotwater.HotwaterLiveTemperature != lastMeasuredTemp {
-			lastMeasuredTemp = relData.Hotwater.HotwaterLiveTemperature
-		} else {
-			nbOfIdenticalVals = nbOfIdenticalVals + 1
-		}
-	}
+	c.log.INFO.Println("New system information read from myVaillant portal.")
 	return err
 }
 
@@ -316,7 +442,7 @@ func (d *Connection) CurrentTemp() (float64, error) {
 			if currentTemp == 5.0 && z.InsideTemperature > currentTemp {
 				currentTemp = z.InsideTemperature
 			}
-			if z.ID == fmt.Sprintf("Control_ZO%01d", d.heatingZone) && z.InsideTemperature != 0.0 {
+			if z.Index == d.heatingZone && z.InsideTemperature != 0.0 {
 				currentTemp = z.InsideTemperature
 			}
 		}
@@ -334,7 +460,7 @@ func (d *Connection) TargetTemp() (float64, error) {
 	}
 	if d.CurrentQuickmode() == QUICKMODE_HEATING {
 		for _, z := range res.Zones {
-			if z.ID == fmt.Sprintf("Control_ZO%01d", d.heatingZone) {
+			if z.Index == d.heatingZone {
 				return float64(z.QuickVeto.TemperatureSetpoint), nil
 			}
 		}
@@ -359,27 +485,16 @@ func (d *Connection) Status() (api.ChargeStatus, error) {
 	return status, nil
 }
 
-/* Not needed anymore
-// GetVr921 is used by vehicle sensonet_vehicle
-func (d *Connection) GetVr921() (*Vr921RelevantDataStruct, error) {
-	res, err := d.statusCache.Get()
-	if err != nil {
-		return &res, err
-	}
-	return &res, err
-}*/
-
 // This function checks the operation mode of heating and hotwater and the hotwater live temperature
 // and returns, which quick mode should be started, when evcc sends an "Enable"
 func (c *Connection) WhichQuickMode() (int, error) {
-	//c := sh.Connection
 	res, err := c.statusCache.Get()
 	if err != nil {
 		err = fmt.Errorf("could not read status cache before hotwater boost: %s", err)
 		return 0, err
 	}
-	c.log.DEBUG.Println("PV Use Strategy = ", c.pvUseStrategy)
-	c.log.DEBUG.Printf("Checking if hot water boost possible. Operation Mode = %s, temperature setpoint= %f, live temperature= %f", res.Hotwater.OperationMode, res.Hotwater.HotwaterTemperatureSetpoint, res.Hotwater.HotwaterLiveTemperature)
+	//c.log.DEBUG.Println("PV Use Strategy = ", c.pvUseStrategy)
+	c.log.DEBUG.Printf("Checking if hot water boost possible. Operation Mode = %s, temperature setpoint= %02.2f, live temperature= %02.2f", res.Hotwater.OperationMode, res.Hotwater.HotwaterTemperatureSetpoint, res.Hotwater.HotwaterLiveTemperature)
 	hotWaterBoostPossible := false
 	if res.Hotwater.HotwaterLiveTemperature <= res.Hotwater.HotwaterTemperatureSetpoint-5 &&
 		res.Hotwater.OperationMode == OPERATIONMODE_TIME_CONTROLLED {
@@ -388,7 +503,7 @@ func (c *Connection) WhichQuickMode() (int, error) {
 
 	heatingQuickVetoPossible := false
 	for _, z := range res.Zones {
-		if z.ID == fmt.Sprintf("Control_ZO%01d", c.heatingZone) {
+		if z.Index == c.heatingZone {
 			c.log.DEBUG.Printf("Checking if heating quick veto possible. Operation Mode = %s", z.OperationMode)
 			if z.OperationMode == OPERATIONMODE_TIME_CONTROLLED {
 				heatingQuickVetoPossible = true

@@ -1,5 +1,7 @@
 package sensonet
 
+import "time"
+
 const PVUSESTRATEGY_HOTWATER_THEN_HEATING string = "hotwater_then_heating"
 const PVUSESTRATEGY_HOTWATER string = "hotwater"
 const PVUSESTRATEGY_HEATING string = "heating"
@@ -7,21 +9,39 @@ const OPERATIONMODE_TIME_CONTROLLED string = "TIME_CONTROLLED"
 const QUICKMODE_HOTWATER string = "Hotwater Boost"
 const QUICKMODE_HEATING string = "Heating Quick Veto"
 
-const TOKEN_URL string = "https://smart.vaillant.com/mobile/api/v4/account/authentication/v1/token/new"
-const AUTH_URL string = "https://smart.vaillant.com/mobile/api/v4/account/authentication/v1/authenticate"
-const FACILITIES_URL string = "https://smart.vaillant.com/mobile/api/v4/facilities"
+const AUTH_BASE_URL string = "https://identity.vaillant-group.com/auth/realms"
+const LOGIN_URL string = AUTH_BASE_URL + "/%s/login-actions/authenticate"
+const TOKEN_URL string = AUTH_BASE_URL + "/%s/protocol/openid-connect/token"
+const AUTH_URL string = AUTH_BASE_URL + "/%s/protocol/openid-connect/auth"
+const API_URL_BASE string = "https://api.vaillant-group.com/service-connected-control/end-user-app-api/v1"
 const SYSTEM_URL string = "/systemcontrol/tli/v1"
+const FACILITIES_URL string = "not to be used"
 const LIVEREPORT_URL string = "/livereport/v1"
-const HOTWATERBOOST_URL string = "/systemcontrol/tli/v1/dhw/configuration/hotwater_boost"
-const ZONEQUICKVETO_URL string = "/systemcontrol/tli/v1/zones/Control_ZO%01d/configuration/quick_veto"
+const CLIENT_ID string = "myvaillant"
+
+const HOTWATERBOOST_URL string = "/systems/%s/tli/domestic-hot-water/%01d/boost"
+const ZONEQUICKVETO_URL string = "/systems/%s/tli/zones/%01d/quick-veto"
+
+//zone_quick_veto_url= API_URL_BASE+'/systems/9d2cc41b-12fd-47cc-b351-35d7e11fb1ab'+'/tli/zones/%01d/quick-veto'
+
+type TokenRequestStruct struct {
+	AccessToken      string `json:"access_token"`
+	ExpiresIn        int    `json:"expires_in"`
+	RefreshExpiresIn int    `json:"refresh_expires_in"`
+	RefreshToken     string `json:"refresh_token"`
+	TokenType        string `json:"token_type"`
+	NotBeforePolicy  int    `json:"not-before-policy"`
+	SessionState     string `json:"session_state"`
+	Scope            string `json:"scope"`
+}
 
 // VR921 Types
 
 type Vr921RelevantDataZonesStruct struct {
-	ID                     string
-	Name                   string
-	ActiveFunction         string
-	Enabled                bool
+	Index int
+	Name  string
+	//ActiveFunction         string
+	//Enabled                bool
 	CurrentDesiredSetpoint float64
 	OperationMode          string
 	CurrentQuickmode       string
@@ -29,7 +49,8 @@ type Vr921RelevantDataZonesStruct struct {
 		ExpiresAt           string
 		TemperatureSetpoint float64
 	}
-	InsideTemperature float64
+	InsideTemperature             float64
+	CurrentCircuitFlowTemperature float64
 }
 
 type Vr921RelevantDataStruct struct {
@@ -40,263 +61,279 @@ type Vr921RelevantDataStruct struct {
 	//PvModeTimestamp int64
 
 	Status struct {
-		Datetime           string
-		OutsideTemperature float64
+		Datetime              string
+		OutsideTemperature    float64
+		SystemFlowTemperature float64
 	}
 
 	Hotwater struct {
+		Index                       int
 		HotwaterTemperatureSetpoint float64
 		OperationMode               string
-		HotwaterSystemState         string // to store the meta info state for system
-		HotwaterSystemTimestamp     int64  // to store the meta info timestamp for system
-		HotwaterLiveTemperature     float64
-		HotwaterLiveState           string // to store the meta info state for live report
-		HotwaterLiveTimestamp       int64  // to store the meta info timestamp for live report
-		CurrentQuickmode            string
+		//HotwaterSystemState         string // to store the meta info state for system
+		//HotwaterSystemTimestamp     int64  // to store the meta info timestamp for system
+		HotwaterLiveTemperature float64
+		//HotwaterLiveState           string // to store the meta info state for live report
+		//HotwaterLiveTimestamp       int64  // to store the meta info timestamp for live report
+		CurrentQuickmode string
 	}
 
 	Zones []Vr921RelevantDataZonesStruct
 }
 
-type FacilitiesListStruct struct {
-	Body struct {
-		FacilitiesList []struct {
-			Capabilities       []string `json:"capabilities"`
-			FirmwareVersion    string   `json:"firmwareVersion"`
-			Name               string   `json:"name"`
-			NetworkInformation struct {
-				MacAddressEthernet        string `json:"macAddressEthernet"`
-				MacAddressWifiAccessPoint string `json:"macAddressWifiAccessPoint"`
-				MacAddressWifiClient      string `json:"macAddressWifiClient"`
-			} `json:"networkInformation"`
-			ResponsibleCountryCode string `json:"responsibleCountryCode"`
-			SerialNumber           string `json:"serialNumber"`
-			SupportedBrand         string `json:"supportedBrand"`
-		} `json:"facilitiesList"`
-	} `json:"body"`
-	Meta struct{} `json:"meta"`
+type HomesStruct []struct {
+	HomeName string `json:"homeName"`
+	Address  struct {
+		Street      string `json:"street"`
+		Extension   any    `json:"extension"`
+		City        string `json:"city"`
+		PostalCode  string `json:"postalCode"`
+		CountryCode string `json:"countryCode"`
+	} `json:"address"`
+	SerialNumber    string `json:"serialNumber"`
+	SystemID        string `json:"systemId"`
+	ProductMetadata struct {
+		ProductType    string `json:"productType"`
+		ProductionYear string `json:"productionYear"`
+		ProductionWeek string `json:"productionWeek"`
+		ArticleNumber  string `json:"articleNumber"`
+	} `json:"productMetadata"`
+	State               string    `json:"state"`
+	MigrationState      string    `json:"migrationState"`
+	MigrationFinishedAt time.Time `json:"migrationFinishedAt"`
+	OnlineState         string    `json:"onlineState"`
+	Firmware            struct {
+		Version        string `json:"version"`
+		UpdateEnabled  bool   `json:"updateEnabled"`
+		UpdateRequired bool   `json:"updateRequired"`
+	} `json:"firmware"`
+	Nomenclature       string `json:"nomenclature"`
+	Cag                bool   `json:"cag"`
+	CountryCode        string `json:"countryCode"`
+	ProductInformation string `json:"productInformation"`
+	FirmwareVersion    string `json:"firmwareVersion"`
 }
 
 type SystemStruct struct {
-	Body struct {
-		Configuration struct {
-			ManualCooling struct {
-				EndDate   string `json:"end_date"`
-				StartDate string `json:"start_date"`
-			} `json:"manual_cooling"`
-		} `json:"configuration"`
-		Dhw struct {
-			Circulation struct {
-				Configuration struct {
-					OperationMode string `json:"operation_mode"`
-				} `json:"configuration"`
-				Timeprogram struct {
-					Friday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"friday"`
-					Monday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"monday"`
-					Saturday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"saturday"`
-					Sunday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"sunday"`
-					Thursday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"thursday"`
-					Tuesday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"tuesday"`
-					Wednesday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"wednesday"`
-				} `json:"timeprogram"`
-			} `json:"circulation"`
-			Configuration struct {
-				CurrentQuickmode string `json:"current_quickmode"`
-				Away             struct {
-					EndDatetime   string `json:"end_datetime"`
-					StartDatetime string `json:"start_datetime"`
-				} `json:"away"`
-			} `json:"configuration"`
-			Hotwater struct {
-				Configuration struct {
-					HotwaterTemperatureSetpoint float64 `json:"hotwater_temperature_setpoint"`
-					OperationMode               string  `json:"operation_mode"`
-				} `json:"configuration"`
-				Timeprogram struct {
-					Friday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"friday"`
-					Monday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"monday"`
-					Saturday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"saturday"`
-					Sunday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"sunday"`
-					Thursday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"thursday"`
-					Tuesday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"tuesday"`
-					Wednesday []struct {
-						EndTime   string `json:"end_time"`
-						StartTime string `json:"start_time"`
-					} `json:"wednesday"`
-				} `json:"timeprogram"`
-			} `json:"hotwater"`
-		} `json:"dhw"`
-		Status struct {
-			Datetime           string  `json:"datetime"`
-			OutsideTemperature float64 `json:"outside_temperature"`
-		} `json:"status"`
+	State struct {
+		System struct {
+			OutdoorTemperature           float64 `json:"outdoorTemperature"`
+			OutdoorTemperatureAverage24H float64 `json:"outdoorTemperatureAverage24h"`
+			SystemFlowTemperature        float64 `json:"systemFlowTemperature"`
+			SystemWaterPressure          float64 `json:"systemWaterPressure"`
+			EnergyManagerState           string  `json:"energyManagerState"`
+			SystemOff                    bool    `json:"systemOff"`
+		} `json:"system"`
 		Zones []struct {
-			ID            string `json:"_id"`
-			Configuration struct {
-				ActiveFunction string `json:"active_function"`
-				Away           struct {
-					EndDatetime         string  `json:"end_datetime"`
-					StartDatetime       string  `json:"start_datetime"`
-					TemperatureSetpoint float64 `json:"temperature_setpoint"`
-				} `json:"away"`
-				CurrentDesiredSetpoint float64 `json:"current_desired_setpoint"`
-				CurrentQuickmode       string  `json:"current_quickmode"`
-				QuickVeto              struct {
-					ExpiresAt           string  `json:"expires_at"`
-					TemperatureSetpoint float64 `json:"temperature_setpoint"`
-				} `json:"quick_veto"`
-				EcoMode             bool    `json:"eco_mode"`
-				Enabled             bool    `json:"enabled"`
-				Humidity            float64 `json:"humidity"`
-				InsideTemperature   float64 `json:"inside_temperature"`
-				ManualCoolingActive bool    `json:"manual_cooling_active"`
-				Name                string  `json:"name"`
-			} `json:"configuration"`
+			Index                                 int     `json:"index"`
+			DesiredRoomTemperatureSetpointHeating float64 `json:"desiredRoomTemperatureSetpointHeating"`
+			DesiredRoomTemperatureSetpoint        float64 `json:"desiredRoomTemperatureSetpoint"`
+			CurrentRoomTemperature                float64 `json:"currentRoomTemperature,omitempty"`
+			CurrentRoomHumidity                   float64 `json:"currentRoomHumidity,omitempty"`
+			CurrentSpecialFunction                string  `json:"currentSpecialFunction"`
+			HeatingState                          string  `json:"heatingState"`
+		} `json:"zones"`
+		Circuits []struct {
+			Index                         int     `json:"index"`
+			CircuitState                  string  `json:"circuitState"`
+			CurrentCircuitFlowTemperature float64 `json:"currentCircuitFlowTemperature,omitempty"`
+			HeatingCircuitFlowSetpoint    float64 `json:"heatingCircuitFlowSetpoint"`
+			CalculatedEnergyManagerState  string  `json:"calculatedEnergyManagerState"`
+		} `json:"circuits"`
+		Dhw []struct {
+			Index                  int     `json:"index"`
+			CurrentSpecialFunction string  `json:"currentSpecialFunction"`
+			CurrentDhwTemperature  float64 `json:"currentDhwTemperature"`
+		} `json:"dhw"`
+	} `json:"state"`
+	Properties struct {
+		System struct {
+			ControllerType                     string  `json:"controllerType"`
+			SystemScheme                       int     `json:"systemScheme"`
+			BackupHeaterType                   string  `json:"backupHeaterType"`
+			BackupHeaterAllowedFor             string  `json:"backupHeaterAllowedFor"`
+			ModuleConfigurationVR71            int     `json:"moduleConfigurationVR71"`
+			EnergyProvidePowerCutBehavior      string  `json:"energyProvidePowerCutBehavior"`
+			SmartPhotovoltaicBufferOffset      float64 `json:"smartPhotovoltaicBufferOffset"`
+			ExternalEnergyManagementActivation bool    `json:"externalEnergyManagementActivation"`
+		} `json:"system"`
+		Zones []struct {
+			Index                  int    `json:"index"`
+			IsActive               bool   `json:"isActive"`
+			ZoneBinding            string `json:"zoneBinding"`
+			IsCoolingAllowed       bool   `json:"isCoolingAllowed"`
+			AssociatedCircuitIndex int    `json:"associatedCircuitIndex"`
+		} `json:"zones"`
+		Circuits []struct {
+			Index                    int    `json:"index"`
+			MixerCircuitTypeExternal string `json:"mixerCircuitTypeExternal"`
+			HeatingCircuitType       string `json:"heatingCircuitType"`
+		} `json:"circuits"`
+		Dhw []struct {
+			Index       int     `json:"index"`
+			MinSetpoint float64 `json:"minSetpoint"`
+			MaxSetpoint float64 `json:"maxSetpoint"`
+		} `json:"dhw"`
+	} `json:"properties"`
+	Configuration struct {
+		System struct {
+			ContinuousHeatingStartSetpoint float64 `json:"continuousHeatingStartSetpoint"`
+			AlternativePoint               float64 `json:"alternativePoint"`
+			HeatingCircuitBivalencePoint   float64 `json:"heatingCircuitBivalencePoint"`
+			DhwBivalencePoint              float64 `json:"dhwBivalencePoint"`
+			AdaptiveHeatingCurve           bool    `json:"adaptiveHeatingCurve"`
+			DhwMaximumLoadingTime          int     `json:"dhwMaximumLoadingTime"`
+			DhwHysteresis                  float64 `json:"dhwHysteresis"`
+			DhwFlowSetpointOffset          float64 `json:"dhwFlowSetpointOffset"`
+			ContinuousHeatingRoomSetpoint  float64 `json:"continuousHeatingRoomSetpoint"`
+			HybridControlStrategy          string  `json:"hybridControlStrategy"`
+			MaxFlowSetpointHpError         float64 `json:"maxFlowSetpointHpError"`
+			DhwMaximumTemperature          float64 `json:"dhwMaximumTemperature"`
+			MaximumPreheatingTime          int     `json:"maximumPreheatingTime"`
+			ParalellTankLoadingAllowed     bool    `json:"paralellTankLoadingAllowed"`
+		} `json:"system"`
+		Zones []struct {
+			Index   int `json:"index"`
+			General struct {
+				Name                 string    `json:"name"`
+				HolidayStartDateTime time.Time `json:"holidayStartDateTime"`
+				HolidayEndDateTime   time.Time `json:"holidayEndDateTime"`
+				HolidaySetpoint      float64   `json:"holidaySetpoint"`
+			} `json:"general"`
 			Heating struct {
-				Configuration struct {
-					ManualModeTemperatureSetpoint float64 `json:"manual_mode_temperature_setpoint"`
-					OperationMode                 string  `json:"operation_mode"`
-					SetbackTemperatureSetpoint    float64 `json:"setback_temperature_setpoint"`
-				} `json:"configuration"`
-				Timeprogram struct {
-					Friday []struct {
-						EndTime   string  `json:"end_time"`
-						Setpoint  float64 `json:"setpoint"`
-						StartTime string  `json:"start_time"`
-					} `json:"friday"`
+				OperationModeHeating      string  `json:"operationModeHeating"`
+				SetBackTemperature        float64 `json:"setBackTemperature"`
+				ManualModeSetpointHeating float64 `json:"manualModeSetpointHeating"`
+				TimeProgramHeating        struct {
+					MetaInfo struct {
+						MinSlotsPerDay          int  `json:"minSlotsPerDay"`
+						MaxSlotsPerDay          int  `json:"maxSlotsPerDay"`
+						SetpointRequiredPerSlot bool `json:"setpointRequiredPerSlot"`
+					} `json:"metaInfo"`
 					Monday []struct {
-						EndTime   string  `json:"end_time"`
+						StartTime int     `json:"startTime"`
+						EndTime   int     `json:"endTime"`
 						Setpoint  float64 `json:"setpoint"`
-						StartTime string  `json:"start_time"`
 					} `json:"monday"`
-					Saturday []struct {
-						EndTime   string  `json:"end_time"`
-						Setpoint  float64 `json:"setpoint"`
-						StartTime string  `json:"start_time"`
-					} `json:"saturday"`
-					Sunday []struct {
-						EndTime   string  `json:"end_time"`
-						Setpoint  float64 `json:"setpoint"`
-						StartTime string  `json:"start_time"`
-					} `json:"sunday"`
-					Thursday []struct {
-						EndTime   string  `json:"end_time"`
-						Setpoint  float64 `json:"setpoint"`
-						StartTime string  `json:"start_time"`
-					} `json:"thursday"`
 					Tuesday []struct {
-						EndTime   string  `json:"end_time"`
+						StartTime int     `json:"startTime"`
+						EndTime   int     `json:"endTime"`
 						Setpoint  float64 `json:"setpoint"`
-						StartTime string  `json:"start_time"`
 					} `json:"tuesday"`
 					Wednesday []struct {
-						EndTime   string  `json:"end_time"`
+						StartTime int     `json:"startTime"`
+						EndTime   int     `json:"endTime"`
 						Setpoint  float64 `json:"setpoint"`
-						StartTime string  `json:"start_time"`
 					} `json:"wednesday"`
-				} `json:"timeprogram"`
+					Thursday []struct {
+						StartTime int     `json:"startTime"`
+						EndTime   int     `json:"endTime"`
+						Setpoint  float64 `json:"setpoint"`
+					} `json:"thursday"`
+					Friday []struct {
+						StartTime int     `json:"startTime"`
+						EndTime   int     `json:"endTime"`
+						Setpoint  float64 `json:"setpoint"`
+					} `json:"friday"`
+					Saturday []struct {
+						StartTime int     `json:"startTime"`
+						EndTime   int     `json:"endTime"`
+						Setpoint  float64 `json:"setpoint"`
+					} `json:"saturday"`
+					Sunday []struct {
+						StartTime int     `json:"startTime"`
+						EndTime   int     `json:"endTime"`
+						Setpoint  float64 `json:"setpoint"`
+					} `json:"sunday"`
+				} `json:"timeProgramHeating"`
 			} `json:"heating"`
 		} `json:"zones"`
-	} `json:"body"`
-	Meta struct {
-		ResourceState []struct {
-			Link struct {
-				Rel          string `json:"rel"`
-				ResourceLink string `json:"resourceLink"`
-			} `json:"link"`
-			State     string `json:"state"`
-			Timestamp int64  `json:"timestamp"`
-		} `json:"resourceState"`
-	} `json:"meta"`
-}
-
-type LiveReportStruct struct {
-	Body struct {
-		Devices []struct {
-			ID      string `json:"_id"`
-			Name    string `json:"name"`
-			Reports []struct {
-				ID                       string  `json:"_id"`
-				AssociatedDeviceFunction string  `json:"associated_device_function"`
-				MeasurementCategory      string  `json:"measurement_category"`
-				Name                     string  `json:"name"`
-				Unit                     string  `json:"unit"`
-				Value                    float64 `json:"value"`
-			} `json:"reports"`
-		} `json:"devices"`
-	} `json:"body"`
-	Meta struct {
-		ResourceState []struct {
-			Link struct {
-				Rel          string `json:"rel"`
-				ResourceLink string `json:"resourceLink"`
-			} `json:"link"`
-			State     string `json:"state"`
-			Timestamp int64  `json:"timestamp"`
-		} `json:"resourceState"`
-	} `json:"meta"`
-}
-
-type ZoneConfigurationStruct struct {
-	Body struct {
-		ActiveFunction string `json:"active_function"`
-		Away           struct {
-			EndDatetime         string  `json:"end_datetime"`
-			StartDatetime       string  `json:"start_datetime"`
-			TemperatureSetpoint float64 `json:"temperature_setpoint"`
-		} `json:"away"`
-		EcoMode             bool   `json:"eco_mode"`
-		Enabled             bool   `json:"enabled"`
-		ManualCoolingActive bool   `json:"manual_cooling_active"`
-		Name                string `json:"name"`
-	} `json:"body"`
-	Meta struct {
-		ResourceState []struct {
-			Link struct {
-				Rel          string `json:"rel"`
-				ResourceLink string `json:"resourceLink"`
-			} `json:"link"`
-			State     string `json:"state"`
-			Timestamp int64  `json:"timestamp"`
-		} `json:"resourceState"`
-	} `json:"meta"`
+		Circuits []struct {
+			Index                                  int     `json:"index"`
+			HeatingCurve                           float64 `json:"heatingCurve"`
+			HeatingFlowTemperatureMinimumSetpoint  float64 `json:"heatingFlowTemperatureMinimumSetpoint"`
+			HeatingFlowTemperatureMaximumSetpoint  float64 `json:"heatingFlowTemperatureMaximumSetpoint"`
+			HeatDemandLimitedByOutsideTemperature  float64 `json:"heatDemandLimitedByOutsideTemperature"`
+			HeatingCircuitFlowSetpointExcessOffset float64 `json:"heatingCircuitFlowSetpointExcessOffset"`
+			SetBackModeEnabled                     bool    `json:"setBackModeEnabled"`
+			RoomTemperatureControlMode             string  `json:"roomTemperatureControlMode"`
+		} `json:"circuits"`
+		Dhw []struct {
+			Index                int       `json:"index"`
+			OperationModeDhw     string    `json:"operationModeDhw"`
+			TappingSetpoint      float64   `json:"tappingSetpoint"`
+			HolidayStartDateTime time.Time `json:"holidayStartDateTime"`
+			HolidayEndDateTime   time.Time `json:"holidayEndDateTime"`
+			TimeProgramDhw       struct {
+				MetaInfo struct {
+					MinSlotsPerDay          int  `json:"minSlotsPerDay"`
+					MaxSlotsPerDay          int  `json:"maxSlotsPerDay"`
+					SetpointRequiredPerSlot bool `json:"setpointRequiredPerSlot"`
+				} `json:"metaInfo"`
+				Monday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"monday"`
+				Tuesday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"tuesday"`
+				Wednesday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"wednesday"`
+				Thursday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"thursday"`
+				Friday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"friday"`
+				Saturday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"saturday"`
+				Sunday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"sunday"`
+			} `json:"timeProgramDhw"`
+			TimeProgramCirculationPump struct {
+				MetaInfo struct {
+					MinSlotsPerDay          int  `json:"minSlotsPerDay"`
+					MaxSlotsPerDay          int  `json:"maxSlotsPerDay"`
+					SetpointRequiredPerSlot bool `json:"setpointRequiredPerSlot"`
+				} `json:"metaInfo"`
+				Monday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"monday"`
+				Tuesday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"tuesday"`
+				Wednesday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"wednesday"`
+				Thursday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"thursday"`
+				Friday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"friday"`
+				Saturday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"saturday"`
+				Sunday []struct {
+					StartTime int `json:"startTime"`
+					EndTime   int `json:"endTime"`
+				} `json:"sunday"`
+			} `json:"timeProgramCirculationPump"`
+		} `json:"dhw"`
+	} `json:"configuration"`
 }
