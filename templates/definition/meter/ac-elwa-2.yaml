@@ -1,8 +1,8 @@
-template: thor
+template: ac-elwa-2
 products:
   - brand: my-PV
     description:
-      generic: AC•THOR
+      generic: AC ELWA 2
 params:
   - name: usage
     choice: ["aux"]
@@ -12,4 +12,9 @@ render: |
   power:
     source: http
     uri: http://{{ .host }}/data.jsn
-    jq: if .power_act == null then 0 else .power_act end + if .power_ac9 == null then 0 else .power_ac9 end
+    jq: .power_elwa2
+  soc:
+    source: http
+    uri: http://{{ .host }}/data.jsn
+    jq: .temp1
+    scale: 0.1
