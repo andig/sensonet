@@ -14,6 +14,7 @@ __debug_bin*
 !evcc.dist.yaml
 !tests/**/*.evcc.yaml
 !tsconfig.json
+!sensonet_example.yaml
 /templates/docs
 evcc
 evcc.exe

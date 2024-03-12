@@ -70,12 +70,8 @@ type Vr921RelevantDataStruct struct {
 		Index                       int
 		HotwaterTemperatureSetpoint float64
 		OperationMode               string
-		//HotwaterSystemState         string // to store the meta info state for system
-		//HotwaterSystemTimestamp     int64  // to store the meta info timestamp for system
-		HotwaterLiveTemperature float64
-		//HotwaterLiveState           string // to store the meta info state for live report
-		//HotwaterLiveTimestamp       int64  // to store the meta info timestamp for live report
-		CurrentQuickmode string
+		HotwaterLiveTemperature     float64
+		CurrentQuickmode            string
 	}
 
 	Zones []Vr921RelevantDataZonesStruct
