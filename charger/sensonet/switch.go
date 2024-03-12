@@ -210,9 +210,10 @@ func (sh *Switch) startZoneQuickVeto(relData *Vr921RelevantDataStruct) error {
 	}
 	// Temperature Setpoint for quick veto is rounded to 0.5 °C
 	vetoSetpoint := float32(math.Round(2*(temperatureSetpoint+c.heatingTemperatureOffset)) / 2.0)
+	vetoDuration := float32(0.5)
 	data := map[string]float32{
 		"desiredRoomTemperatureSetpoint": float32(vetoSetpoint),
-		"duration":                       float32(0.5), // duration for quick veto is 0,5 hours
+		"duration":                       vetoDuration, // duration for quick veto is 0,5 hours
 		//		"duration":             float32(c.heatingVetoDuration) / 30.0,
 	}
 	req, err := http.NewRequest("POST", urlZoneQuickVeto, request.MarshalJSON(data))
@@ -231,7 +232,7 @@ func (sh *Switch) startZoneQuickVeto(relData *Vr921RelevantDataStruct) error {
 		return err
 	}
 	c.quickVetoSetPoint = vetoSetpoint
-	c.quickVetoExpiresAt = (time.Now().Add(time.Duration(0.5 * 30 * int(time.Minute)))).String()
+	c.quickVetoExpiresAt = (time.Now().Add(time.Duration(int(vetoDuration*60) * int(time.Minute)))).Format("2006-01-02 15:04:05")
 	return err
 }
 

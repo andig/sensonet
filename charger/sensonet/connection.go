@@ -85,7 +85,7 @@ func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, pha
 
 	err = conn.loginAndGetToken()
 	if err != nil {
-		err = fmt.Errorf("could not login and get token. error: %s", err)
+		//err = fmt.Errorf("could not login and get token. error: %s", err)
 		return conn, err
 	}
 
@@ -111,13 +111,13 @@ func (c *Connection) loginAndGetToken() error {
 	var err error
 	c.code, c.codeVerifier, err = c.getCode()
 	if err != nil {
-		err = fmt.Errorf("could not get code. error: %s", err)
+		//err = fmt.Errorf("could not get code. error: %s", err)
 		return err
 	}
 	c.log.DEBUG.Printf("New Code: %s\n", c.code)
 	c.tokenRes, err = c.getToken()
 	if err != nil {
-		err = fmt.Errorf("could not get token. error: %s", err)
+		//err = fmt.Errorf("could not get token. error: %s", err)
 		return err
 	}
 	c.log.DEBUG.Println("Got new Token:")
@@ -158,9 +158,9 @@ func generateCode() (string, string) {
 
 func computeLoginUrl(loginHtlm, realm string) string {
 	loginUrl := fmt.Sprintf(LOGIN_URL, realm)
-	index1 := strings.Index(loginHtlm, "?")
+	index1 := strings.Index(loginHtlm, "authenticate?")
 	index2 := strings.Index(loginHtlm[index1:], "\"")
-	loginUrl = loginUrl + loginHtlm[index1:index1+index2]
+	loginUrl = loginUrl + loginHtlm[index1+12:index1+index2]
 	/*result = re.search(fmt.Sprintf(LOGIN_URL, realm)+ r"\?([^\"]*)",
 		login_html,
 	)*/
@@ -197,6 +197,7 @@ func (c *Connection) getCode() (string, string, error) {
 		err = fmt.Errorf("could not read response body. error: %s", err)
 		return "", "", err
 	}
+	//c.log.DEBUG.Printf("Got login html %s", loginHtml)
 	if val, ok := resp.Header["Location"]; ok {
 		parsedUrl, _ := url.Parse(val[0])
 		code = parsedUrl.Query()["code"][0]
@@ -208,7 +209,7 @@ func (c *Connection) getCode() (string, string, error) {
 
 	loginUrl := computeLoginUrl(string(loginHtml), c.realm)
 	if loginUrl == "" {
-		err = api.ErrMissingCredentials
+		err = api.ErrTimeout
 		err = fmt.Errorf("could not compute login url. error: %s", err)
 		return "", "", err
 	}
@@ -315,8 +316,8 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 	var system SystemStruct
 	err = c.DoJSON(req, &system)
 	if err != nil {
-		c.log.DEBUG.Println("Error getting sytem. Error:", err)
-		c.log.DEBUG.Println("Trying to refresh token")
+		c.log.ERROR.Println("Error getting sytem. Error:", err)
+		c.log.INFO.Println("Trying to refresh token")
 		c.tokenRes, err = c.refreshToken()
 		if err != nil {
 			err = fmt.Errorf("could not refresh token. error: %s", err)
@@ -350,6 +351,7 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 	}
 
 	//Extract information for all zones
+	c.quickVetoSetPoint = 0.0 // Reset c.quickVetoSetPoint
 	if len(relData.Zones) == 0 {
 		relData.Zones = make([]Vr921RelevantDataZonesStruct, 0)
 	}
@@ -405,10 +407,12 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 		}
 		relData.Zones[i].InsideTemperature = systemStateZone.CurrentRoomTemperature
 		relData.Zones[i].CurrentCircuitFlowTemperature = systemStateCircuit.CurrentCircuitFlowTemperature
-		if relData.Zones[i].CurrentQuickmode != "NONE" {
-			c.currentQuickmode = QUICKMODE_HEATING
-			c.quickmodeStarted = time.Now().Unix()
-			c.onoff = true
+		if (relData.Zones[i].CurrentQuickmode != "NONE") && (c.currentQuickmode != "") {
+			if c.currentQuickmode != QUICKMODE_HEATING {
+				c.currentQuickmode = QUICKMODE_HEATING
+				c.quickmodeStarted = time.Now().Unix()
+				c.onoff = true
+			}
 		}
 	}
 	//Added by WW: This block is used during development to analyse the system report return from the Vaillant portal
