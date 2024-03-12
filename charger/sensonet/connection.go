@@ -25,6 +25,8 @@ import (
 type Connection struct {
 	*request.Helper
 	log            *util.Logger
+	user           string
+	password       string
 	realm          string
 	tokenRes       TokenRequestStruct
 	code           string
@@ -61,6 +63,8 @@ func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, pha
 		Helper: client,
 	}
 	conn.cache = 2 * time.Minute
+	conn.user = user
+	conn.password = password
 	conn.realm = realm
 	conn.pvUseStrategy = pvUseStrategy
 	conn.heatingZone = heatingZone
@@ -79,7 +83,7 @@ func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, pha
 		return conn, err
 	}
 
-	err = conn.loginAndGetToken(user, password)
+	err = conn.loginAndGetToken()
 	if err != nil {
 		err = fmt.Errorf("could not login and get token. error: %s", err)
 		return conn, err
@@ -103,9 +107,9 @@ func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, pha
 	return conn, nil
 }
 
-func (c *Connection) loginAndGetToken(user, password string) error {
+func (c *Connection) loginAndGetToken() error {
 	var err error
-	c.code, c.codeVerifier, err = c.getCode(user, password)
+	c.code, c.codeVerifier, err = c.getCode()
 	if err != nil {
 		err = fmt.Errorf("could not get code. error: %s", err)
 		return err
@@ -163,7 +167,7 @@ func computeLoginUrl(loginHtlm, realm string) string {
 	return html.UnescapeString(loginUrl)
 }
 
-func (c *Connection) getCode(user, password string) (string, string, error) {
+func (c *Connection) getCode() (string, string, error) {
 	codeVerifier, codeChallenge := generateCode()
 	code := ""
 	auth_querystring := url.Values{}
@@ -211,8 +215,8 @@ func (c *Connection) getCode(user, password string) (string, string, error) {
 	c.log.DEBUG.Printf("Got login url %s", loginUrl)
 
 	params := url.Values{}
-	params.Set("username", user)
-	params.Set("password", password)
+	params.Set("username", c.user)
+	params.Set("password", c.password)
 	params.Set("credentialId", "")
 	req1, err3 := http.NewRequest("POST", loginUrl, strings.NewReader(params.Encode()))
 	if err3 != nil {
@@ -311,8 +315,22 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 	var system SystemStruct
 	err = c.DoJSON(req, &system)
 	if err != nil {
-		err = fmt.Errorf("error getting systems: %s", err)
-		return err
+		c.log.DEBUG.Println("Error getting sytem. Error:", err)
+		c.log.DEBUG.Println("Trying to refresh token")
+		c.tokenRes, err = c.refreshToken()
+		if err != nil {
+			err = fmt.Errorf("could not refresh token. error: %s", err)
+			return err
+		}
+		//d.log.DEBUG.Println("Refresh token successful")
+		c.tokenExpiresAt = time.Now().Add(time.Duration(c.tokenRes.ExpiresIn * int(time.Second)))
+		c.log.DEBUG.Printf("Refreshed token expires at: %02d:%02d:%02d", c.tokenExpiresAt.Hour(), c.tokenExpiresAt.Minute(), c.tokenExpiresAt.Second())
+		req.Header = c.getSensonetHttpHeader()
+		err = c.DoJSON(req, &system)
+		if err != nil {
+			err = fmt.Errorf("error getting systems: %s", err)
+			return err
+		}
 	}
 
 	relData.Timestamp = time.Now().Unix()
