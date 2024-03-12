@@ -1706,5 +1706,8 @@ func (lp *Loadpoint) Update(sitePower float64, autoCharge, batteryBuffered, batt
 	//WW added by WW
 	if c, ok := lp.charger.(*charger.Sensonet); ok {
 		lp.publish(keys.VehicleName, lp.vehicle.Title()+c.ModeText())
+		if c, ok := lp.charger.(api.IconDescriber); ok {
+			lp.publish(keys.ChargerIcon, c.Icon())
+		}
 	}
 }

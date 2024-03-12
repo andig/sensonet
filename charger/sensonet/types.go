@@ -14,9 +14,10 @@ const LOGIN_URL string = AUTH_BASE_URL + "/%s/login-actions/authenticate"
 const TOKEN_URL string = AUTH_BASE_URL + "/%s/protocol/openid-connect/token"
 const AUTH_URL string = AUTH_BASE_URL + "/%s/protocol/openid-connect/auth"
 const API_URL_BASE string = "https://api.vaillant-group.com/service-connected-control/end-user-app-api/v1"
-const SYSTEM_URL string = "/systemcontrol/tli/v1"
-const FACILITIES_URL string = "not to be used"
-const LIVEREPORT_URL string = "/livereport/v1"
+
+// const SYSTEM_URL string = "/systemcontrol/tli/v1"
+// const FACILITIES_URL string = "not to be used"
+// const LIVEREPORT_URL string = "/livereport/v1"
 const CLIENT_ID string = "myvaillant"
 
 const HOTWATERBOOST_URL string = "/systems/%s/tli/domestic-hot-water/%01d/boost"
