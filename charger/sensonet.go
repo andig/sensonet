@@ -104,5 +104,5 @@ func (c *Sensonet) ModeText() string {
 	case sensonet.QUICKMODE_HEATING:
 		return " (Heating Quick Veto active)"
 	}
-	return " (in Regular Mode; hotwater temp. shown)"
+	return " (regular mode; hotwater temp. shown)"
 }

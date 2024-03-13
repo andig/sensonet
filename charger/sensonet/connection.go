@@ -41,7 +41,7 @@ type Connection struct {
 	statusCache              provider.Cacheable[Vr921RelevantDataStruct]
 	cache                    time.Duration
 	currentQuickmode         string
-	quickmodeStarted         int64
+	quickmodeStarted         time.Time
 	onoff                    bool
 	quickVetoSetPoint        float32
 	quickVetoExpiresAt       string
@@ -73,7 +73,7 @@ func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, pha
 	conn.heatingTemperatureOffset = heatingTemperatureOffset
 	conn.log = log
 	conn.currentQuickmode = ""
-	conn.quickmodeStarted = time.Now().Unix()
+	conn.quickmodeStarted = time.Now()
 	SensoNetConn = conn //this is not needed without vehicle sensonet_vehicle
 
 	var err error
@@ -345,7 +345,7 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 		relData.Hotwater.CurrentQuickmode = system.State.Dhw[0].CurrentSpecialFunction
 		if system.State.Dhw[0].CurrentSpecialFunction == "CYLINDER_BOOST" {
 			c.currentQuickmode = QUICKMODE_HOTWATER
-			c.quickmodeStarted = time.Now().Unix()
+			c.quickmodeStarted = time.Now()
 			c.onoff = true
 		}
 	}
@@ -410,7 +410,7 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 		if (relData.Zones[i].CurrentQuickmode != "NONE") && (c.currentQuickmode != "") {
 			if c.currentQuickmode != QUICKMODE_HEATING {
 				c.currentQuickmode = QUICKMODE_HEATING
-				c.quickmodeStarted = time.Now().Unix()
+				c.quickmodeStarted = time.Now()
 				c.onoff = true
 			}
 		}
@@ -486,6 +486,7 @@ func (d *Connection) TargetTemp() (float64, error) {
 				return float64(z.QuickVeto.TemperatureSetpoint), nil
 			}
 		}
+		return float64(d.quickVetoSetPoint), nil
 	}
 	return float64(res.Hotwater.HotwaterTemperatureSetpoint), nil
 }
@@ -518,7 +519,7 @@ func (c *Connection) WhichQuickMode() (int, error) {
 	//c.log.DEBUG.Println("PV Use Strategy = ", c.pvUseStrategy)
 	c.log.DEBUG.Printf("Checking if hot water boost possible. Operation Mode = %s, temperature setpoint= %02.2f, live temperature= %02.2f", res.Hotwater.OperationMode, res.Hotwater.HotwaterTemperatureSetpoint, res.Hotwater.HotwaterLiveTemperature)
 	hotWaterBoostPossible := false
-	if res.Hotwater.HotwaterLiveTemperature <= res.Hotwater.HotwaterTemperatureSetpoint-5 &&
+	if (res.Hotwater.HotwaterLiveTemperature <= res.Hotwater.HotwaterTemperatureSetpoint-5 || c.pvUseStrategy == PVUSESTRATEGY_HOTWATER) &&
 		res.Hotwater.OperationMode == OPERATIONMODE_TIME_CONTROLLED {
 		hotWaterBoostPossible = true
 	}
