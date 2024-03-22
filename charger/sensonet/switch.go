@@ -29,7 +29,7 @@ func (sh *Switch) Enabled() (bool, error) {
 	var err error
 	d := sh.Connection
 	// If token expires in less than 3 minutes, a token refresh is called
-	if time.Now().Add(time.Duration(3 * int(time.Minute))).After(d.tokenExpiresAt) {
+	if time.Now().Add(time.Duration(3 * int64(time.Minute))).After(d.tokenExpiresAt) {
 		d.tokenRes, err = d.refreshToken()
 		if err != nil {
 			err = fmt.Errorf("could not refresh token. error: %s", err)
@@ -271,7 +271,7 @@ func (sh *Switch) startZoneQuickVeto(relData *Vr921RelevantDataStruct) error {
 		return err
 	}
 	c.quickVetoSetPoint = vetoSetpoint
-	c.quickVetoExpiresAt = (time.Now().Add(time.Duration(int(vetoDuration*60) * int(time.Minute)))).Format("2006-01-02 15:04:05")
+	c.quickVetoExpiresAt = (time.Now().Add(time.Duration(int64(vetoDuration*60) * int64(time.Minute)))).Format("15:04")
 	return err
 }
 
