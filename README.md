@@ -21,9 +21,9 @@ curent temperatures and temperature setpoints.
 The sensonet_vehicle module is used to present some information like SoC and TagetSoC to the loadpoint module of evcc.
 
 If the evcc signals to the sensonet charger module that a charging session should be started, then the sensonet module does the following:
-   (a) If 'pvusestrategy='hotwater') or (pvusestrategy='hotwater_than_heating' and current hotwater temperature is more than 5°C below the setpoint), then
+   (a) If ('pvusestrategy='hotwater') or (pvusestrategy='hotwater_than_heating' and current hotwater temperature is more than 5°C below the setpoint), then
          a hotwater boost is initiated via http post requests.
-   (b) If 'pvusestrategy='heating') or (pvusestrategy='hotwater_than_heating' and current hotwater temperature is less than 5°C below the setpoint), then
+   (b) If ('pvusestrategy='heating') or (pvusestrategy='hotwater_than_heating' and current hotwater temperature is less than 5°C below the setpoint), then
          a heating zone quick veto is initiated via http post requests for the zone given by the heatingzone parameter in the evcc.yaml file (default=0). 
         The duration of the veto is 30 minutes and the veto_setpoint= normal_temperature_setpoint + heatingtemperatureoffset (default=2).
 
