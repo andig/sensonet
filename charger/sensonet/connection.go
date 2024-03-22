@@ -280,7 +280,13 @@ func (c *Connection) refreshToken() (TokenRequestStruct, error) {
 	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	err = c.DoJSON(req1, &tokenRes)
 	if err != nil {
-		err = fmt.Errorf("could not refresh token. error: %s", err)
+		c.log.INFO.Printf("Call of refreshToken not susccessful. Error: %s TryingloginAndGetToken", err)
+		err = c.loginAndGetToken()
+		if err != nil {
+			err = fmt.Errorf("could not relogin in refresh token. error: %s", err)
+		} else {
+			c.log.INFO.Println("Relogin successful")
+		}
 		return tokenRes, err
 	}
 	return tokenRes, nil
@@ -451,6 +457,10 @@ func (d *Connection) CurrentQuickmode() string {
 	return d.currentQuickmode
 }
 
+func (d *Connection) QuickVetoExpiresAt() string {
+	return d.quickVetoExpiresAt
+}
+
 // CurrentTemp is called bei Soc
 func (d *Connection) CurrentTemp() (float64, error) {
 	res, err := d.statusCache.Get()
@@ -492,18 +502,12 @@ func (d *Connection) TargetTemp() (float64, error) {
 }
 
 func (d *Connection) Status() (api.ChargeStatus, error) {
-	status := api.StatusA // disconnected
+	status := api.StatusB
+	if time.Now().After(d.tokenExpiresAt) {
+		status = api.StatusA // disconnected
+	}
 	if d.CurrentQuickmode() != "" {
 		status = api.StatusC
-	} else {
-		whichQuickMode, err := d.WhichQuickMode()
-		if err != nil {
-			err = fmt.Errorf("error while computing which quick mode to start: %s", err)
-			return status, err
-		}
-		if whichQuickMode > 0 {
-			status = api.StatusB
-		}
 	}
 	return status, nil
 }
