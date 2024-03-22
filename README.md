@@ -8,6 +8,8 @@ This is a fork of evcc.io to add an extension for Vaillant heat pumps with the s
 - The sensonet module connects to the myVaillant portal to get system information from the heat pump and to start quick modes.
 - As the sensonet charger module supports two different charge modes ('Hotwater Boost' and 'Heating Quick Veto'), small additions were made to the
   module loadpoint.go and the vue file Vehicle.vue to display the current charge mode. The usage of these two changes is optional. 
+=======
+>>>>>>> 67fa7c5d89d04d4d6f12ed36ee5d8213de3e3acb
 
 ## How it works
 
