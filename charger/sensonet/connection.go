@@ -62,7 +62,7 @@ func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, pha
 	conn := &Connection{
 		Helper: client,
 	}
-	conn.cache = 2 * time.Minute
+	conn.cache = 90 * time.Second
 	conn.user = user
 	conn.password = password
 	conn.realm = realm
@@ -122,7 +122,7 @@ func (c *Connection) loginAndGetToken() error {
 	}
 	c.log.DEBUG.Println("Got new Token:")
 	//c.log.DEBUG.Printf("New Token: %s\n", c.token)
-	c.tokenExpiresAt = time.Now().Add(time.Duration(c.tokenRes.ExpiresIn * int(time.Second)))
+	c.tokenExpiresAt = time.Now().Add(time.Duration(c.tokenRes.ExpiresIn * int64(time.Second)))
 	c.log.DEBUG.Printf("Token expires at: %02d:%02d:%02d", c.tokenExpiresAt.Hour(), c.tokenExpiresAt.Minute(), c.tokenExpiresAt.Second())
 	return err
 }
@@ -264,7 +264,7 @@ func (c *Connection) getToken() (TokenRequestStruct, error) {
 	return tokenRes, nil
 }
 
-func (c *Connection) refreshToken() (TokenRequestStruct, error) {
+func (c *Connection) refreshToken() error {
 	var tokenRes TokenRequestStruct
 	params := url.Values{}
 	params.Set("grant_type", "refresh_token")
@@ -275,7 +275,7 @@ func (c *Connection) refreshToken() (TokenRequestStruct, error) {
 	req1, err := http.NewRequest("POST", urlnewtoken, strings.NewReader(params.Encode()))
 	if err != nil {
 		err = fmt.Errorf("refreshToken: could not create request: %s", err)
-		return tokenRes, err
+		return err
 	}
 	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	err = c.DoJSON(req1, &tokenRes)
@@ -287,9 +287,10 @@ func (c *Connection) refreshToken() (TokenRequestStruct, error) {
 		} else {
 			c.log.INFO.Println("Relogin successful")
 		}
-		return tokenRes, err
+		return err
 	}
-	return tokenRes, nil
+	c.tokenRes = tokenRes
+	return nil
 }
 
 func (c *Connection) getHomes() (string, error) {
@@ -324,13 +325,13 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 	if err != nil {
 		c.log.ERROR.Println("Error getting sytem. Error:", err)
 		c.log.INFO.Println("Trying to refresh token")
-		c.tokenRes, err = c.refreshToken()
+		err = c.refreshToken()
 		if err != nil {
 			err = fmt.Errorf("could not refresh token. error: %s", err)
 			return err
 		}
 		//d.log.DEBUG.Println("Refresh token successful")
-		c.tokenExpiresAt = time.Now().Add(time.Duration(c.tokenRes.ExpiresIn * int(time.Second)))
+		c.tokenExpiresAt = time.Now().Add(time.Duration(c.tokenRes.ExpiresIn * int64(time.Second)))
 		c.log.DEBUG.Printf("Refreshed token expires at: %02d:%02d:%02d", c.tokenExpiresAt.Hour(), c.tokenExpiresAt.Minute(), c.tokenExpiresAt.Second())
 		req.Header = c.getSensonetHttpHeader()
 		err = c.DoJSON(req, &system)
@@ -347,14 +348,12 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 	relData.Hotwater.HotwaterLiveTemperature = system.State.Dhw[0].CurrentDhwTemperature
 	relData.Hotwater.OperationMode = system.Configuration.Dhw[0].OperationModeDhw
 	relData.Hotwater.Index = system.Configuration.Dhw[0].Index
-	if relData.Hotwater.CurrentQuickmode != system.State.Dhw[0].CurrentSpecialFunction {
-		relData.Hotwater.CurrentQuickmode = system.State.Dhw[0].CurrentSpecialFunction
-		if system.State.Dhw[0].CurrentSpecialFunction == "CYLINDER_BOOST" {
-			c.currentQuickmode = QUICKMODE_HOTWATER
-			c.quickmodeStarted = time.Now()
-			c.onoff = true
-		}
-	}
+	relData.Hotwater.CurrentQuickmode = system.State.Dhw[0].CurrentSpecialFunction
+	/*if system.State.Dhw[0].CurrentSpecialFunction == "CYLINDER_BOOST" && (c.currentQuickmode != "") {
+		c.currentQuickmode = QUICKMODE_HOTWATER
+		c.quickmodeStarted = time.Now()
+		c.onoff = true
+	}*/
 
 	//Extract information for all zones
 	c.quickVetoSetPoint = 0.0 // Reset c.quickVetoSetPoint
@@ -413,13 +412,13 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 		}
 		relData.Zones[i].InsideTemperature = systemStateZone.CurrentRoomTemperature
 		relData.Zones[i].CurrentCircuitFlowTemperature = systemStateCircuit.CurrentCircuitFlowTemperature
-		if (relData.Zones[i].CurrentQuickmode != "NONE") && (c.currentQuickmode != "") {
+		/*if (relData.Zones[i].CurrentQuickmode != "NONE") && (c.currentQuickmode != "") {
 			if c.currentQuickmode != QUICKMODE_HEATING {
 				c.currentQuickmode = QUICKMODE_HEATING
 				c.quickmodeStarted = time.Now()
 				c.onoff = true
 			}
-		}
+		}*/
 	}
 	//Added by WW: This block is used during development to analyse the system report return from the Vaillant portal
 	c.log.DEBUG.Println("Writing debug information to files debug_sensonet_system.txt and debug_sensonet_reldata.txt")

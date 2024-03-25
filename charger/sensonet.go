@@ -38,7 +38,7 @@ func NewSensonetFromConfig(other map[string]interface{}) (api.Charger, error) {
 	}
 	//WW Setting api.feature "Heating(4)" manually, because it does not work from the evcc.yaml file
 	//WW Can be deleted, if it works from the config file
-	cc.embed.Features_ = append(cc.embed.Features_, 4)
+	//cc.embed.Features_ = append(cc.embed.Features_, 4)
 
 	return NewSensonet(cc.embed, cc.User, cc.Password, cc.Realm, cc.PvUseStrategy, cc.HeatingZone, cc.Phases, cc.HeatingTemperatureOffset, cc.StandbyPower)
 }

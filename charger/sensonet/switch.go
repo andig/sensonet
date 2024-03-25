@@ -30,13 +30,13 @@ func (sh *Switch) Enabled() (bool, error) {
 	d := sh.Connection
 	// If token expires in less than 3 minutes, a token refresh is called
 	if time.Now().Add(time.Duration(3 * int64(time.Minute))).After(d.tokenExpiresAt) {
-		d.tokenRes, err = d.refreshToken()
+		err = d.refreshToken()
 		if err != nil {
 			err = fmt.Errorf("could not refresh token. error: %s", err)
 			return false, err
 		}
 		//d.log.DEBUG.Println("Refresh token successful")
-		d.tokenExpiresAt = time.Now().Add(time.Duration(d.tokenRes.ExpiresIn * int(time.Second)))
+		d.tokenExpiresAt = time.Now().Add(time.Duration(d.tokenRes.ExpiresIn * int64(time.Second)))
 		d.log.DEBUG.Printf("Refreshed token expires at: %02d:%02d:%02d", d.tokenExpiresAt.Hour(), d.tokenExpiresAt.Minute(), d.tokenExpiresAt.Second())
 	}
 
