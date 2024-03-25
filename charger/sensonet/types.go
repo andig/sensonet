@@ -27,8 +27,8 @@ const ZONEQUICKVETO_URL string = "/systems/%s/tli/zones/%01d/quick-veto"
 
 type TokenRequestStruct struct {
 	AccessToken      string `json:"access_token"`
-	ExpiresIn        int    `json:"expires_in"`
-	RefreshExpiresIn int    `json:"refresh_expires_in"`
+	ExpiresIn        int64  `json:"expires_in"`
+	RefreshExpiresIn int64  `json:"refresh_expires_in"`
 	RefreshToken     string `json:"refresh_token"`
 	TokenType        string `json:"token_type"`
 	NotBeforePolicy  int    `json:"not-before-policy"`
