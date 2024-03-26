@@ -1,7 +1,7 @@
 package vehicle
 
 import (
-	"errors"
+	//"errors"
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger/sensonet"
@@ -74,16 +74,16 @@ func (v *Sensonet_vehicle) Status() (api.ChargeStatus, error) {
 var _ api.SocLimiter = (*Sensonet_vehicle)(nil)
 
 // TargetSoc implements the api.SocLimiter interface
-func (v *Sensonet_vehicle) TargetSoc() (float64, error) {
+func (v *Sensonet_vehicle) GetLimitSoc() (int64, error) {
 	tt, err := v.conn.TargetTemp()
 	if err != nil {
 		return 0, err
 	}
-	return float64(tt), err
+	return int64(tt), err
 }
 
 // StartCharge implements the api.VehicleChargeController interface
-var _ api.Resurrector = (*Sensonet_vehicle)(nil)
+/*var _ api.Resurrector = (*Sensonet_vehicle)(nil)
 
 func (v *Sensonet_vehicle) WakeUp() error {
 	//_, err := v.vehicle.Wakeup()
@@ -113,4 +113,4 @@ func (v *Sensonet_vehicle) StopCharge() error {
 	}
 
 	return err
-}
+}*/
