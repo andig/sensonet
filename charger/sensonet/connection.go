@@ -356,7 +356,7 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 	}*/
 
 	//Extract information for all zones
-	c.quickVetoSetPoint = 0.0 // Reset c.quickVetoSetPoint
+	//c.quickVetoSetPoint = 0.0 // Reset c.quickVetoSetPoint
 	if len(relData.Zones) == 0 {
 		relData.Zones = make([]Vr921RelevantDataZonesStruct, 0)
 	}
@@ -421,27 +421,36 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 		}*/
 	}
 	//Added by WW: This block is used during development to analyse the system report return from the Vaillant portal
-	c.log.DEBUG.Println("Writing debug information to files debug_sensonet_system.txt and debug_sensonet_reldata.txt")
-	fo, ioerr := os.Create("debug_sensonet_system.txt")
-	if ioerr != nil {
-		panic(ioerr)
+	level := util.LogLevelForArea("sensonet").String()
+	if level == "DEBUG" || level == "TRACE" {
+		c.log.DEBUG.Println("Writing debug information to files debug_sensonet_system.txt and debug_sensonet_reldata.txt")
+		fo, ioerr := os.Create("debug_sensonet_system.txt")
+		if ioerr != nil {
+			c.log.ERROR.Println("Error creating debug_sensonet_system.txt. Error:", ioerr)
+			return err
+		} else {
+			bytes, _ := json.MarshalIndent(system, "", "  ")
+			_, ioerr = fo.Write(bytes)
+			if ioerr != nil {
+				c.log.ERROR.Println("Error writing in debug_sensonet_system.txt. Error:", ioerr)
+				return err
+			}
+			fo.Close()
+		}
+		fo, ioerr = os.Create("debug_sensonet_reldata.txt")
+		if ioerr != nil {
+			c.log.ERROR.Println("Error creating debug_sensonet_reldata.txt. Error:", ioerr)
+			return err
+		} else {
+			bytes, _ := json.MarshalIndent(relData, "", "  ")
+			_, ioerr = fo.Write(bytes)
+			if ioerr != nil {
+				c.log.ERROR.Println("Error writing in debug_sensonet_reldata.txt. Error:", ioerr)
+				return err
+			}
+			fo.Close()
+		}
 	}
-	bytes, _ := json.MarshalIndent(system, "", "  ")
-	_, ioerr = fo.Write(bytes)
-	if ioerr != nil {
-		panic(ioerr)
-	}
-	fo.Close()
-	fo, ioerr = os.Create("debug_sensonet_reldata.txt")
-	if ioerr != nil {
-		panic(ioerr)
-	}
-	bytes, _ = json.MarshalIndent(relData, "", "  ")
-	_, ioerr = fo.Write(bytes)
-	if ioerr != nil {
-		panic(ioerr)
-	}
-	fo.Close()
 	//Added by WW: End of block
 
 	c.log.INFO.Println("New system information read from myVaillant portal.")
