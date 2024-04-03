@@ -46,6 +46,10 @@ socLimit = "SoC Begrenzung"
 example = "Beispiel"
 optional = "optional"
 
+[config.general]
+cancel = "Abbrechen"
+save = "Speichern"
+
 [config.grid]
 titleAdd = "Stromzähler (Netz) hinzufügen"
 titleEdit = "Stromzähler (Netz) bearbeiten"
@@ -72,9 +76,10 @@ validateSave = "Überprüfen & speichern"
 titleAdd = "Zähler (PV) hinzufügen"
 titleEdit = "Zähler (PV) bearbeiten"
 
-[config.site]
-cancel = "Abbrechen"
-save = "Speichern"
+[config.title]
+description = "Wird in der Hauptansicht und im Browser-Tab angezeigt."
+label = "Titel"
+title = "Titel bearbeiten"
 
 [config.validation]
 failed = "fehlgeschlagen"
@@ -360,9 +365,9 @@ pvDisable = "Zu wenig Überschuss. Pausiere in {remaining} …"
 pvEnable = "Überschuss verfügbar. Starte in {remaining} …"
 scale1p = "Reduziere auf einphasig in {remaining} …"
 scale3p = "Erhöhe auf dreiphasig in {remaining} …"
-targetChargeActive = "Zielladen aktiv …"
-targetChargePlanned = "Zielladen geplant. Ladung startet {time} Uhr."
-targetChargeWaitForVehicle = "Zielladen bereit. Warte auf Fahrzeug …"
+targetChargeActive = "Ladeplan aktiv …"
+targetChargePlanned = "Ladeplan startet {time} Uhr."
+targetChargeWaitForVehicle = "Ladeplan bereit. Warte auf Fahrzeug …"
 unknown = ""
 vehicleLimitReached = "Fahrzeuglimit {soc}% erreicht."
 waitForVehicle = "Ladebereit. Warte auf Fahrzeug …"
