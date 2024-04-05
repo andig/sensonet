@@ -52,7 +52,7 @@ func (sh *Switch) Enabled() (bool, error) {
 		d.log.DEBUG.Println("In Switch.Enabled: Connection.currentQuickmode not set. Timestamp:", (d.quickmodeStarted).Format("2006-01-02 15:04:05"))
 		if (res.Hotwater.CurrentQuickmode != "") && (res.Hotwater.CurrentQuickmode != "REGULAR") {
 			d.log.DEBUG.Println("In Switch.Enabled: res.Hotwater.CurrentQuickmode should be inactive but is on")
-			if (d.quickmodeStarted.Add(time.Duration(5 * time.Minute))).Before(time.Now()) {
+			if d.quickmodeStarted.Add(5 * time.Minute).Before(time.Now()) {
 				// When the reported hotwater.CurrentQuickmode is not "Regular" more then 5 minutes after the end of the charge session (or the start of evcc),
 				// this means that the heat pump is in hotwater boost
 				d.currentQuickmode = QUICKMODE_HOTWATER
@@ -65,7 +65,7 @@ func (sh *Switch) Enabled() (bool, error) {
 				d.log.DEBUG.Println("In Switch.Enabled: Zone quick mode:", z.CurrentQuickmode, ", Temperature Setpoint:", z.QuickVeto.TemperatureSetpoint, "(", d.quickVetoSetPoint, "), Expires at:", d.quickVetoExpiresAt)
 				if (z.CurrentQuickmode != "") && (z.CurrentQuickmode != "NONE") {
 					d.log.DEBUG.Println("In Switch.Enabled: z.CurrentQuickmode should be inactive but is on")
-					if (d.quickmodeStarted.Add(time.Duration(5 * time.Minute))).Before(time.Now()) {
+					if d.quickmodeStarted.Add(5 * time.Minute).Before(time.Now()) {
 						// When the reported z.CurrentQuickmode is not "NONE" more then 5 minutes after the end of a charge session (or the start of evcc),
 						// this means that the zone quick veto startet by other means as evcc
 						d.currentQuickmode = QUICKMODE_HEATING
@@ -80,7 +80,7 @@ func (sh *Switch) Enabled() (bool, error) {
 		d.log.DEBUG.Println("In Switch.Enabled: Hotwater quick mode:", res.Hotwater.CurrentQuickmode)
 		if (res.Hotwater.CurrentQuickmode == "") || (res.Hotwater.CurrentQuickmode == "REGULAR") {
 			d.log.DEBUG.Println("In Switch.Enabled: res.Hotwater.CurrentQuickmode should be active but is off")
-			if d.quickmodeStarted.Add(time.Duration(5 * time.Minute)).Before(time.Now()) {
+			if d.quickmodeStarted.Add(5 * time.Minute).Before(time.Now()) {
 				// When the reported hotwater.CurrentQuickmode has changed to "Regular" more then 5 minutes after the beginning of the charge session,
 				// this means that the heat pump has stopped the hotwater boost itself
 				d.currentQuickmode = ""
@@ -95,7 +95,7 @@ func (sh *Switch) Enabled() (bool, error) {
 				d.log.DEBUG.Println("In Switch.Enabled: Zone quick mode:", z.CurrentQuickmode, ", Temperature Setpoint:", z.QuickVeto.TemperatureSetpoint, "(", d.quickVetoSetPoint, "), Expires at:", d.quickVetoExpiresAt)
 				if (z.CurrentQuickmode == "") || (z.CurrentQuickmode == "NONE") {
 					d.log.DEBUG.Println("In Switch.Enabled: z.CurrentQuickmode should be active but is off")
-					if d.quickmodeStarted.Add(time.Duration(5 * time.Minute)).Before(time.Now()) {
+					if d.quickmodeStarted.Add(5 * time.Minute).Before(time.Now()) {
 						// When the reported z.CurrentQuickmode has changed to "NONE" more then 5 minutes after the beginning of the charge session,
 						// this means that the zone quick veto ended or was stopped by other means as evcc
 						d.currentQuickmode = ""
