@@ -52,7 +52,6 @@ var SensoNetConn *Connection
 
 // NewConnection creates a new Sensonet device connection.
 func NewConnection(user, password, realm, pvUseStrategy string, heatingZone, phases int, heatingTemperatureOffset float64) (*Connection, error) {
-
 	log := util.NewLogger("sensonet")
 	client := request.NewHelper(log)
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -323,7 +322,7 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 	var system SystemStruct
 	err = c.DoJSON(req, &system)
 	if err != nil {
-		c.log.ERROR.Println("Error getting sytem. Error:", err)
+		c.log.ERROR.Println("Error getting system. Error:", err)
 		c.log.INFO.Println("Trying to refresh token")
 		err = c.refreshToken()
 		if err != nil {
@@ -458,7 +457,7 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 }
 
 func (d *Connection) Phases() int {
-	return int(d.phases)
+	return d.phases
 }
 
 func (d *Connection) CurrentQuickmode() string {

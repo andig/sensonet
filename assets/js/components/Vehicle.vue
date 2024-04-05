@@ -142,7 +142,6 @@ export default {
 			return this.vehicle?.capacity || 0;
 		},
 		icon: function () {
-			return this.vehicles[0].icon;
 			return this.vehicle?.icon || "";
 		},
 		minSoc: function () {
