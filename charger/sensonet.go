@@ -81,7 +81,6 @@ func (c *Sensonet) Enable(enable bool) error {
 	default:
 		return nil
 	}
-
 }
 
 func (c *Sensonet) Phases() int {

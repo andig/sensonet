@@ -44,12 +44,12 @@ func NewSensonetVehicleFromConfig(other map[string]interface{}) (api.Vehicle, er
 }
 
 // apiError converts HTTP 408 error to ErrTimeout
-func (v *Sensonet_vehicle) apiError(err error) error {
+/*func (v *Sensonet_vehicle) apiError(err error) error {
 	if err != nil && err.Error() == "408 Request Timeout" {
 		err = api.ErrAsleep
 	}
 	return err
-}
+}*/
 
 // Soc implements the api.Vehicle interface
 func (v *Sensonet_vehicle) Soc() (float64, error) {
