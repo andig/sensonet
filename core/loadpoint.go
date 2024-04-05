@@ -1063,8 +1063,8 @@ func (lp *Loadpoint) fastCharging() error {
 	return err
 }
 
-// pvScalePhases switches phases if necessary and returns if switch occurred
-func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) bool {
+// pvScalePhases switches phases if necessary and returns number of phases switched to
+func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) int {
 	phases := lp.GetPhases()
 
 	// observed phase state inconsistency
@@ -1073,7 +1073,7 @@ func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) bo
 	// - https://github.com/evcc-io/evcc/issues/2613
 	measuredPhases := lp.getMeasuredPhases()
 	if phases > 0 && phases < measuredPhases {
-		if lp.chargerUpdateCompleted() {
+		if lp.chargerUpdateCompleted() && lp.phaseSwitchCompleted() {
 			lp.log.WARN.Printf("ignoring inconsistent phases: %dp < %dp observed active", phases, measuredPhases)
 		}
 		lp.resetMeasuredPhases()
@@ -1103,7 +1103,7 @@ func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) bo
 			if err := lp.scalePhases(1); err != nil {
 				lp.log.ERROR.Println(err)
 			}
-			return true
+			return 1
 		}
 
 		waiting = true
@@ -1132,7 +1132,10 @@ func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) bo
 			if err := lp.scalePhases(3); err != nil {
 				lp.log.ERROR.Println(err)
 			}
-			return true
+			if err := lp.scalePhases(3); err != nil {
+				lp.log.ERROR.Println(err)
+			}
+			return 3
 		}
 
 		waiting = true
@@ -1143,7 +1146,7 @@ func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) bo
 		lp.resetPhaseTimer()
 	}
 
-	return false
+	return 0
 }
 
 // TODO move up to timer functions
@@ -1175,13 +1178,18 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64, batter
 	maxCurrent := lp.effectiveMaxCurrent()
 
 	// switch phases up/down
+	var scaledTo int
 	if lp.hasPhaseSwitching() && lp.phaseSwitchCompleted() {
-		_ = lp.pvScalePhases(sitePower, minCurrent, maxCurrent)
+		scaledTo = lp.pvScalePhases(sitePower, minCurrent, maxCurrent)
 	}
 
 	// calculate target charge current from delta power and actual current
-	effectiveCurrent := lp.effectiveCurrent()
 	activePhases := lp.ActivePhases()
+	effectiveCurrent := lp.effectiveCurrent()
+	if scaledTo == 3 {
+		// if we did scale, adjust the effective current to the new phase count
+		effectiveCurrent /= 3.0
+	}
 	deltaCurrent := powerToCurrent(-sitePower, activePhases)
 	targetCurrent := max(effectiveCurrent+deltaCurrent, 0)
 
