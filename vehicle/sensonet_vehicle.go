@@ -1,8 +1,6 @@
 package vehicle
 
 import (
-	//"errors"
-
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger/sensonet"
 	"github.com/evcc-io/evcc/util"

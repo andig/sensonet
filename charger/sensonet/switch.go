@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-
-	//"strings"
 	"time"
 
 	"github.com/evcc-io/evcc/util/request"
