@@ -86,7 +86,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/teslamotors/vehicle-command v0.0.2
 	github.com/thanhpk/randstr v1.0.6
-	github.com/traefik/yaegi v0.16.1
+	github.com/traefik/yaegi v0.16.0
 	github.com/tv42/httpunix v0.0.0-20191220191345-2ba4b9c3382c
 	github.com/volkszaehler/mbmd v0.0.0-20240229124119-740c5c8ad344
 	github.com/writeas/go-strip-markdown/v2 v2.1.1
