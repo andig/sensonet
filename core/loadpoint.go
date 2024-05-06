@@ -1705,10 +1705,16 @@ func (lp *Loadpoint) Update(sitePower float64, autoCharge, batteryBuffered, batt
 
 	//WW added by WW to show the current quick mode in the vehicle title and the SoC data even if no charge session active
 	if c, ok := lp.charger.(*charger.Sensonet); ok {
-		lp.publish(keys.VehicleName, lp.vehicle.Title()+c.ModeText())
-		soc, err := lp.socEstimator.Soc(lp.getChargedEnergy())
-		if err == nil {
-			lp.publish(keys.VehicleSoc, soc)
+		title := "Guest"
+		if lp.vehicle != nil {
+			title = lp.vehicle.Title()
+		}
+		lp.publish(keys.VehicleName, title+c.ModeText())
+		if lp.socEstimator != nil {
+			soc, err := lp.socEstimator.Soc(lp.getChargedEnergy())
+			if err == nil {
+				lp.publish(keys.VehicleSoc, soc)
+			}
 		}
 		if vs, ok := lp.GetVehicle().(api.SocLimiter); ok {
 			if limit, err := vs.GetLimitSoc(); err == nil {
