@@ -37,7 +37,7 @@ func circuitTests() []circuitTest {
 		{0, 2, 0, 1, 1, 0}, // =
 		{0, 2, 0, 2, 2, 1}, // =
 		{0, 2, 0, 2, 3, 1}, // +
-		// {0, 2, 0, 2, 1, 1}, // -
+		{0, 2, 0, 2, 1, 1}, // -
 
 		// parent loaded
 		{1, 0, 0, 0, 0, 0}, // =
@@ -52,7 +52,7 @@ func circuitTests() []circuitTest {
 		{2, 0, 0, 1, 1, 0}, // =
 		{2, 0, 0, 2, 2, 1}, // =
 		{2, 0, 0, 2, 3, 1}, // +
-		// {2, 0, 0, 2, 1, 1}, // -
+		{2, 0, 0, 2, 1, 1}, // -
 	}
 }
 
@@ -61,7 +61,7 @@ func TestCircuitPower(t *testing.T) {
 
 	circ := func(t *testing.T, ctrl *gomock.Controller, maxP float64) (*Circuit, *api.MockMeter) {
 		m := api.NewMockMeter(ctrl)
-		c, err := NewCircuit(log, "foo", 0, maxP, m)
+		c, err := NewCircuit(log, "foo", 0, maxP, m, 0)
 		require.NoError(t, err)
 		return c, m
 	}
@@ -100,7 +100,7 @@ func TestCircuitCurrents(t *testing.T) {
 			api.NewMockMeter(ctrl),
 			api.NewMockPhaseCurrents(ctrl),
 		}
-		c, err := NewCircuit(log, "foo", maxC, 0, m)
+		c, err := NewCircuit(log, "foo", maxC, 0, m, 0)
 		require.NoError(t, err)
 		return c, m
 	}
