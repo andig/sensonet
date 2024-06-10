@@ -140,7 +140,9 @@ func (sh *Switch) Enable(enable bool) error {
 				d.log.DEBUG.Println("Starting zone quick veto")
 			}
 		default:
-			d.log.DEBUG.Println("Enable called but no quick mode possible")
+			d.log.INFO.Println("Enable called but no quick mode possible")
+			//d.onoff = false
+			//return err
 		}
 	} else {
 		switch d.currentQuickmode {

@@ -101,6 +101,11 @@ func logLevelForArea(area string) jww.Threshold {
 	return level
 }
 
+// WWlogLevelForArea is used to call the private function logLevelForArea() in sensonet/connection.go for the fork with the sensonet charger
+func WWlogLevelForArea(area string) jww.Threshold {
+	return logLevelForArea(area)
+}
+
 // LogLevel sets log level for all loggers
 func LogLevel(defaultLevel string, areaLevels map[string]string) {
 	// default level

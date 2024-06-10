@@ -420,7 +420,7 @@ func (c *Connection) getSystem(relData *Vr921RelevantDataStruct) error {
 		}*/
 	}
 	//Added by WW: This block is used during development to analyse the system report return from the Vaillant portal
-	level := util.LogLevelForArea("sensonet").String()
+	level := util.WWlogLevelForArea("sensonet").String()
 	if level == "DEBUG" || level == "TRACE" {
 		c.log.DEBUG.Println("Writing debug information to files debug_sensonet_system.txt and debug_sensonet_reldata.txt")
 		fo, ioerr := os.Create("debug_sensonet_system.txt")
