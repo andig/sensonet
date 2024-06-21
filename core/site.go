@@ -13,6 +13,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/cmd/shutdown"
+	"github.com/evcc-io/evcc/core/circuit"
 	"github.com/evcc-io/evcc/core/coordinator"
 	"github.com/evcc-io/evcc/core/keys"
 	"github.com/evcc-io/evcc/core/loadpoint"
@@ -69,7 +70,8 @@ type Site struct {
 	Voltage       float64      `mapstructure:"voltage"`       // Operating voltage. 230V for Germany.
 	ResidualPower float64      `mapstructure:"residualPower"` // PV meter only: household usage. Grid meter: household safety margin
 	Meters        MetersConfig `mapstructure:"meters"`        // Meter references
-	CircuitRef    string       `mapstructure:"circuit"`       // Circuit reference
+	// TODO deprecated
+	CircuitRef_ string `mapstructure:"circuit"` // Circuit reference
 
 	MaxGridSupplyWhileBatteryCharging float64 `mapstructure:"maxGridSupplyWhileBatteryCharging"` // ignore battery charging if AC consumption is above this value
 
@@ -81,11 +83,10 @@ type Site struct {
 	auxMeters     []api.Meter // Auxiliary meters
 
 	// battery settings
-	prioritySoc                       float64 // prefer battery up to this Soc
-	bufferSoc                         float64 // continue charging on battery above this Soc
-	bufferStartSoc                    float64 // start charging on battery above this Soc
-	maxGridSupplyWhileBatteryCharging float64 // ignore battery charging if AC consumption is above this value
-	batteryDischargeControl           bool    // prevent battery discharge for fast and planned charging
+	prioritySoc             float64 // prefer battery up to this Soc
+	bufferSoc               float64 // continue charging on battery above this Soc
+	bufferStartSoc          float64 // start charging on battery above this Soc
+	batteryDischargeControl bool    // prevent battery discharge for fast and planned charging
 
 	loadpoints  []*Loadpoint             // Loadpoints
 	tariffs     *tariff.Tariffs          // Tariffs
@@ -98,7 +99,7 @@ type Site struct {
 	pvPower      float64         // PV power
 	batteryPower float64         // Battery charge power
 	batterySoc   float64         // Battery soc
-	batteryMode  api.BatteryMode // Battery mode
+	batteryMode  api.BatteryMode // Battery mode (runtime only, not persisted)
 
 	publishCache map[string]any // store last published values to avoid unnecessary republishing
 }
@@ -170,12 +171,8 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 	}
 
 	// circuit
-	if site.CircuitRef != "" {
-		dev, err := config.Circuits().ByName(site.CircuitRef)
-		if err != nil {
-			return err
-		}
-		site.circuit = dev.Instance()
+	if c := circuit.Root(); c != nil {
+		site.circuit = c
 	}
 
 	// grid meter
@@ -851,7 +848,7 @@ func (site *Site) prepare() {
 	site.publish(keys.PrioritySoc, site.prioritySoc)
 	site.publish(keys.BufferSoc, site.bufferSoc)
 	site.publish(keys.BufferStartSoc, site.bufferStartSoc)
-	site.publish(keys.MaxGridSupplyWhileBatteryCharging, site.maxGridSupplyWhileBatteryCharging)
+	site.publish(keys.MaxGridSupplyWhileBatteryCharging, site.MaxGridSupplyWhileBatteryCharging)
 	site.publish(keys.BatteryMode, site.batteryMode)
 	site.publish(keys.BatteryDischargeControl, site.batteryDischargeControl)
 	site.publish(keys.ResidualPower, site.GetResidualPower())
