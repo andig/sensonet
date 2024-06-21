@@ -1,0 +1,36 @@
+template: vaillant-ebus
+products:
+  - brand: Vaillant via Ebus
+    description:
+      generic: VaillantViaEbus
+group: switchsockets
+params:
+  - name: ebusdaddress
+    required: true
+  - name: pvusestrategy
+    choice: ['hotwater','heating','hotwater_then_heating']
+  - name: heatingzone
+    default: 0
+  - name: heatingtemperatureoffset
+    default: 2
+  - name: phases
+    default: 3
+  - preset: switchsocket
+render: |
+  type: vaillant-ebus
+  {{- if .ebusdaddress }}
+  ebusdaddress: {{ .ebusdaddress }}
+  {{- end }}
+  {{- if .pvusestrategy }}
+  pvusestrategy: {{ .pvusestrategy }}
+  {{- end }}
+  {{- if .heatingzone }}
+  heatingzone: {{ .heatingzone }}
+  {{- end }}
+  {{- if .heatingtemperatureoffset }}
+  heatingtemperatureoffset: {{ .heatingtemperatureoffset }}
+  {{- end }}
+  {{- if .phases }}
+  phases: {{ .phases }}
+  {{- end }}
+  {{ include "switchsocket" . }}

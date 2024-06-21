@@ -1729,4 +1729,25 @@ func (lp *Loadpoint) Update(sitePower float64, autoCharge, batteryBuffered, batt
 			}
 		}
 	}
+	if c, ok := lp.charger.(*charger.VaillantEbus); ok {
+		title := "Guest"
+		if lp.vehicle != nil {
+			title = lp.vehicle.Title()
+		}
+		lp.publish(keys.VehicleName, title+c.ModeText())
+		if lp.socEstimator != nil {
+			soc, err := lp.socEstimator.Soc(lp.getChargedEnergy())
+			if err == nil {
+				lp.publish(keys.VehicleSoc, soc)
+			}
+		}
+		if vs, ok := lp.GetVehicle().(api.SocLimiter); ok {
+			if limit, err := vs.GetLimitSoc(); err == nil {
+				lp.log.DEBUG.Printf("vehicle soc limit: %d%%", limit)
+				lp.publish(keys.VehicleLimitSoc, limit)
+			} else {
+				lp.log.ERROR.Printf("vehicle soc limit: %v", err)
+			}
+		}
+	}
 }
