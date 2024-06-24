@@ -8,6 +8,7 @@ const PVUSESTRATEGY_HEATING string = "heating"
 const OPERATIONMODE_TIME_CONTROLLED string = "TIME_CONTROLLED"
 const QUICKMODE_HOTWATER string = "Hotwater Boost"
 const QUICKMODE_HEATING string = "Heating Quick Veto"
+const QUICKMODE_NOTHING string = "Charger running idle"
 
 const AUTH_BASE_URL string = "https://identity.vaillant-group.com/auth/realms"
 const LOGIN_URL string = AUTH_BASE_URL + "/%s/login-actions/authenticate"

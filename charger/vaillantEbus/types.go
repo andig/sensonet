@@ -13,6 +13,8 @@ const EBUSDREAD_STATUS_OUTSIDETEMPERATURE = "outsidetemp"
 const EBUSDREAD_STATUS_SYSTEMFLOWTEMPERATUE = "SystemFlowTemp"
 const EBUSDREAD_STATUS_WATERPRESSURE = "WaterPressure"
 const EBUSDREAD_STATUS_CURRENTCONSUMEDPOWER = "CurrentConsumedPower"
+const EBUSDREAD_STATUS_STATUS01 = "Status01"
+const EBUSDREAD_STATUS_STATE = "State"
 const EBUSDREAD_HOTWATER_OPMODE = "HwcOpMode"
 const EBUSDREAD_HOTWATER_TEMPDESIRED = "HwcTempDesired"
 const EBUSDREAD_HOTWATER_STORAGETEMP = "HwcStorageTemp"
@@ -23,6 +25,9 @@ const EBUSDREAD_ZONE_OPMODE = "OpMode"                               //To be add
 const EBUSDREAD_ZONE_SFMODE = "SFMode"                               //To be added by the zone prefix
 const EBUSDREAD_ZONE_ROOMTEMP = "RoomTemp"                           //To be added by the zone prefix
 const EBUSDREAD_ZONE_QUICKVETOTEMP = "QuickVetoTemp"                 //To be added by the zone prefix
+const EBUSDREAD_ZONE_QUICKVETOENDDATE = "QVEndDate"                  //To be added by the zone prefix
+const EBUSDREAD_ZONE_QUICKVETOENDTIME = "QVEndTime"                  //To be added by the zone prefix
+const EBUSDREAD_ZONE_QUICKVETODURATION = "QVDuration"                //To be added by the zone prefix
 
 //To be deleted
 //const AUTH_BASE_URL string = "https://identity.vaillant-group.com/auth/realms"
@@ -45,6 +50,8 @@ type VaillantRelDataZonesStruct struct {
 	OpMode                string
 	SFMode                string
 	QuickVetoTemp         float64
+	QuickVetoEndTime      string
+	QuickVetoEndDate      string
 	InsideTemperature     float64
 	RoomTemp              float64
 }
@@ -77,6 +84,8 @@ type VaillantRelDataStruct struct {
 		WaterPressure         float64
 		ControllerForSFMode   string
 		CurrentConsumedPower  float64
+		Status01              string
+		State                 string
 	}
 
 	Hotwater struct {

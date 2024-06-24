@@ -40,6 +40,7 @@ type Connection struct {
 	quickVetoSetPoint        float32
 	quickVetoExpiresAt       string
 	relData                  VaillantRelDataStruct
+	getSystemUpdateInterval  time.Duration
 }
 
 // Global variable SensoNetConn is used to make data available in vehicle vks (not needed without vehicle vks)
@@ -61,6 +62,7 @@ func NewConnection(ebusdAddress, pvUseStrategy string, heatingZone, phases int, 
 	conn.log = log
 	conn.currentQuickmode = ""
 	conn.quickmodeStarted = time.Now()
+	conn.getSystemUpdateInterval = 2 * time.Minute
 	VaillantEbusConn = conn //this is not needed without vehicle vaillant-ebus_vehicle
 
 	var err error
@@ -282,7 +284,7 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 	var findResult string
 	var convertedValue float64
 
-	if !reset && time.Now().Add(time.Duration(-2*int64(time.Minute))).Before(c.lastGetSystemAt) {
+	if !reset && time.Now().Add(c.getSystemUpdateInterval).Before(c.lastGetSystemAt) {
 		// Use relData that are already present instead of reading current data from ebusd
 		return nil
 	}
@@ -300,13 +302,13 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 	c.ebusdReadBuffer = *bufio.NewReader(c.ebusdConn)
 	//Getting Data for Hotwater
 	findResult = ""
-	for !slices.Contains([]string{"off", "auto", "manual", "ERR:"}, findResult) && err == nil {
+	for !slices.Contains([]string{"off", "auto", "day", "ERR:"}, findResult) && err == nil {
 		findResult, err = c.ebusdRead(EBUSDREAD_HOTWATER_OPMODE, -1)
 	}
 	if err != nil {
 		return err
 	} else {
-		if slices.Contains([]string{"off", "auto", "manual"}, findResult) {
+		if slices.Contains([]string{"off", "auto", "day"}, findResult) {
 			relData.Hotwater.HwcOpMode = findResult
 		} else {
 			c.log.DEBUG.Printf("Value '%s' returnd from ebusd for %s invalid and therefore ignored", findResult, EBUSDREAD_HOTWATER_OPMODE)
@@ -374,7 +376,26 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 	if err != nil {
 		return err
 	} else {
-		relData.Status.CurrentConsumedPower, _ = strconv.ParseFloat(findResult, 64)
+		convertedValue, err = strconv.ParseFloat(findResult, 64)
+		if err != nil || convertedValue <= 0 {
+			c.log.DEBUG.Printf("Value '%s' returnd from ebusd for %s invalid and therefore ignored", findResult, EBUSDREAD_STATUS_CURRENTCONSUMEDPOWER)
+		} else {
+			relData.Status.CurrentConsumedPower = convertedValue
+		}
+	}
+	findResult, err = c.ebusdRead(EBUSDREAD_STATUS_STATUS01, -1)
+	if err != nil {
+		return err
+	} else {
+		relData.Status.Status01 = findResult
+		c.log.DEBUG.Printf("Info: Value '%s' returnd from ebusd for %s", findResult, EBUSDREAD_STATUS_STATUS01)
+	}
+	findResult, err = c.ebusdRead(EBUSDREAD_STATUS_STATE, -1)
+	if err != nil {
+		return err
+	} else {
+		relData.Status.State = findResult
+		c.log.DEBUG.Printf("Info: Value '%s' returnd from ebusd for %s", findResult, EBUSDREAD_STATUS_STATE)
 	}
 
 	//Getting Zone Data
@@ -394,7 +415,7 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 	if err != nil {
 		return err
 	} else {
-		if slices.Contains([]string{"off", "auto", "manual"}, findResult) {
+		if slices.Contains([]string{"off", "auto", "day"}, findResult) {
 			relData.Zones[i].OpMode = findResult
 		} else {
 			c.log.DEBUG.Printf("Value '%s' returnd from ebusd for %s invalid and therefore ignored", findResult, EBUSDREAD_ZONE_OPMODE)
@@ -404,7 +425,7 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 	if err != nil {
 		return err
 	} else {
-		if slices.Contains([]string{"off", "auto", "manual"}, findResult) {
+		if slices.Contains([]string{"auto", "veto"}, findResult) {
 			relData.Zones[i].SFMode = findResult
 		} else {
 			c.log.DEBUG.Printf("Value '%s' returnd from ebusd for %s invalid and therefore ignored", findResult, EBUSDREAD_ZONE_SFMODE)
@@ -414,19 +435,44 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 	if err != nil {
 		return err
 	} else {
-		relData.Zones[i].ActualRoomTempDesired, _ = strconv.ParseFloat(findResult, 64)
+		convertedValue, err = strconv.ParseFloat(findResult, 64)
+		if err != nil || convertedValue <= 0 {
+			c.log.DEBUG.Printf("Value '%s' returnd from ebusd for %s invalid and therefore ignored", findResult, EBUSDREAD_ZONE_ACTUALROOMTEMPDESIRED)
+		} else {
+			relData.Zones[i].ActualRoomTempDesired = convertedValue
+		}
 	}
 	findResult, err = c.ebusdRead(zonePrefix+EBUSDREAD_ZONE_ROOMTEMP, 180)
 	if err != nil {
 		return err
 	} else {
-		relData.Zones[i].RoomTemp, _ = strconv.ParseFloat(findResult, 64)
+		convertedValue, err = strconv.ParseFloat(findResult, 64)
+		if err != nil || convertedValue <= 0 {
+			c.log.DEBUG.Printf("Value '%s' returnd from ebusd for %s invalid and therefore ignored", findResult, EBUSDREAD_ZONE_ROOMTEMP)
+		} else {
+			relData.Zones[i].RoomTemp = convertedValue
+		}
 	}
 	findResult, err = c.ebusdRead(zonePrefix+EBUSDREAD_ZONE_QUICKVETOTEMP, 0)
 	if err != nil {
 		return err
 	} else {
 		relData.Zones[i].QuickVetoTemp, _ = strconv.ParseFloat(findResult, 64)
+	}
+	findResult, err = c.ebusdRead(zonePrefix+EBUSDREAD_ZONE_QUICKVETOENDDATE, -1)
+	if err != nil {
+		return err
+	} else {
+		relData.Zones[i].QuickVetoEndDate = findResult
+	}
+	findResult, err = c.ebusdRead(zonePrefix+EBUSDREAD_ZONE_QUICKVETOENDTIME, -1)
+	if err != nil {
+		return err
+	} else {
+		relData.Zones[i].QuickVetoEndTime = findResult
+		if relData.Zones[i].SFMode == "veto" {
+			c.quickVetoExpiresAt = relData.Zones[i].QuickVetoEndTime
+		}
 	}
 
 	//Set timestamp lastGetSystemAt and return nil error
@@ -464,6 +510,19 @@ func (c *Connection) getSFMode(relData *VaillantRelDataStruct) error {
 	} else {
 		relData.Zones[i].SFMode = findResult
 	}
+	findResult, err = c.ebusdRead(zonePrefix+EBUSDREAD_ZONE_QUICKVETOENDDATE, 0)
+	if err != nil {
+		return err
+	} else {
+		relData.Zones[i].QuickVetoEndDate = findResult
+	}
+	findResult, err = c.ebusdRead(zonePrefix+EBUSDREAD_ZONE_QUICKVETOENDTIME, 0)
+	if err != nil {
+		return err
+	} else {
+		relData.Zones[i].QuickVetoEndTime = findResult
+	}
+	c.log.DEBUG.Println("Timestamp for end of zone quick veto: ", relData.Zones[i].QuickVetoEndDate+" "+relData.Zones[i].QuickVetoEndTime)
 	return nil
 }
 func (d *Connection) Phases() int {
@@ -476,6 +535,7 @@ func (d *Connection) CurrentQuickmode() string {
 
 func (d *Connection) QuickVetoExpiresAt() string {
 	return d.quickVetoExpiresAt
+
 }
 
 // CurrentTemp is called bei Soc
@@ -551,9 +611,13 @@ func (c *Connection) WhichQuickMode() (int, error) {
 	c.log.DEBUG.Printf("Checking if hot water boost possible. Operation Mode = %s, temperature setpoint= %02.2f, live temperature= %02.2f",
 		c.relData.Hotwater.HwcOpMode, c.relData.Hotwater.HwcTempDesired, c.relData.Hotwater.HwcStorageTemp)
 	hotWaterBoostPossible := false
-	//if (c.relData.Hotwater.HwcStorageTemp <= c.relData.Hotwater.HwcTempDesired-5 || c.pvUseStrategy == PVUSESTRATEGY_HOTWATER) &&
-	//	c.relData.Hotwater.HwcOpMode == OPERATIONMODE_AUTO {
-	if c.relData.Hotwater.HwcStorageTemp <= c.relData.Hotwater.HwcTempDesired-5 &&
+	// For pvUseStrategy='hotwater', a hotwater boost is possible when hotwater storage temperature is less than the temperature setpoint.
+	// For other pvUseStrategies, a hotwater boost is possible when hotwater storage temperature is less than the temperature setpoint minus 5°C
+	addOn := -5.0
+	if c.pvUseStrategy == PVUSESTRATEGY_HOTWATER {
+		addOn = 0.0
+	}
+	if c.relData.Hotwater.HwcStorageTemp < c.relData.Hotwater.HwcTempDesired+addOn &&
 		c.relData.Hotwater.HwcOpMode == OPERATIONMODE_AUTO {
 		hotWaterBoostPossible = true
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger/sensonet"
+	"github.com/evcc-io/evcc/charger/vaillantEbus"
 	"github.com/evcc-io/evcc/util"
 )
 
@@ -105,6 +106,8 @@ func (c *Sensonet) ModeText() string {
 			return " (Heating Quick Veto active. Ends " + c.conn.QuickVetoExpiresAt() + ")"
 		}
 		return " (Heating Quick Veto active)"
+	case vaillantEbus.QUICKMODE_NOTHING:
+		return " (charger running idle)"
 	}
 	return " (regular mode; hotwater temp. shown)"
 }

@@ -74,7 +74,8 @@ func (sh *Switch) Enabled() (bool, error) {
 			}
 		}
 	}
-	if d.currentQuickmode == QUICKMODE_HOTWATER {
+	switch d.currentQuickmode {
+	case QUICKMODE_HOTWATER:
 		d.log.DEBUG.Println("In Switch.Enabled: Hotwater quick mode:", res.Hotwater.CurrentQuickmode)
 		if (res.Hotwater.CurrentQuickmode == "") || (res.Hotwater.CurrentQuickmode == "REGULAR") {
 			d.log.DEBUG.Println("In Switch.Enabled: res.Hotwater.CurrentQuickmode should be active but is off")
@@ -82,12 +83,11 @@ func (sh *Switch) Enabled() (bool, error) {
 				// When the reported hotwater.CurrentQuickmode has changed to "Regular" more then 5 minutes after the beginning of the charge session,
 				// this means that the heat pump has stopped the hotwater boost itself
 				d.currentQuickmode = ""
-				d.quickmodeStarted = time.Now()
+				d.quickmodeStopped = time.Now()
 				d.onoff = false
 			}
 		}
-	}
-	if d.currentQuickmode == QUICKMODE_HEATING {
+	case QUICKMODE_HEATING:
 		for _, z := range res.Zones {
 			if z.Index == d.heatingZone {
 				d.log.DEBUG.Println("In Switch.Enabled: Zone quick mode:", z.CurrentQuickmode, ", Temperature Setpoint:", z.QuickVeto.TemperatureSetpoint, "(", d.quickVetoSetPoint, "), Expires at:", d.quickVetoExpiresAt)
@@ -97,12 +97,23 @@ func (sh *Switch) Enabled() (bool, error) {
 						// When the reported z.CurrentQuickmode has changed to "NONE" more then 5 minutes after the beginning of the charge session,
 						// this means that the zone quick veto ended or was stopped by other means as evcc
 						d.currentQuickmode = ""
-						d.quickmodeStarted = time.Now()
+						d.quickmodeStopped = time.Now()
 						d.onoff = false
 					}
 				}
 			}
 		}
+	case QUICKMODE_NOTHING:
+		if d.quickmodeStarted.Add(10 * time.Minute).Before(time.Now()) {
+			d.log.DEBUG.Println("Idle charge mode for more than 10 minutes. Turning it off")
+			d.currentQuickmode = ""
+			d.quickmodeStopped = time.Now()
+			d.onoff = false
+		}
+	case "":
+		//Nothing to do
+	default:
+		d.log.ERROR.Println("Unknown quick mode in case statement:", d.currentQuickmode)
 	}
 	return d.onoff, nil
 }
@@ -116,6 +127,9 @@ func (sh *Switch) Enable(enable bool) error {
 	if err != nil {
 		err = fmt.Errorf("could not read status cache before hotwater boost: %s", err)
 		return err
+	}
+	if d.currentQuickmode == "" && d.quickmodeStopped.After(d.quickmodeStarted) && d.quickmodeStopped.Add(2*time.Minute).After(time.Now()) {
+		enable = false
 	}
 	if enable {
 		whichQuickMode, err := d.WhichQuickMode()
@@ -140,9 +154,24 @@ func (sh *Switch) Enable(enable bool) error {
 				d.log.DEBUG.Println("Starting zone quick veto")
 			}
 		default:
-			d.log.INFO.Println("Enable called but no quick mode possible")
-			//d.onoff = false
-			//return err
+			if d.currentQuickmode == QUICKMODE_HOTWATER {
+				//if hotwater boost active, then stop it
+				err = sh.stopHotWaterBoost(&res)
+				if err == nil {
+					d.log.DEBUG.Println("Stopping Hotwater Boost")
+				}
+			}
+			if d.currentQuickmode == QUICKMODE_HEATING {
+				//if zone quick veto active, then stop it
+				err = sh.stopZoneQuickVeto()
+				if err == nil {
+					d.log.DEBUG.Println("Stopping Zone Quick Veto")
+				}
+			}
+			d.currentQuickmode = QUICKMODE_NOTHING
+			d.quickmodeStarted = time.Now()
+			d.log.DEBUG.Println("Enable called but no quick mode possible. Starting idle mode")
+			//d.log.INFO.Println("Enable called but no quick mode possible")
 		}
 	} else {
 		switch d.currentQuickmode {
@@ -156,6 +185,8 @@ func (sh *Switch) Enable(enable bool) error {
 			if err == nil {
 				d.log.DEBUG.Println("Stopping Zone Quick Veto")
 			}
+		case QUICKMODE_NOTHING:
+			d.log.DEBUG.Println("Stopping idle quick mode")
 		default:
 			d.log.DEBUG.Println("Nothing to do, no quick mode active")
 		}

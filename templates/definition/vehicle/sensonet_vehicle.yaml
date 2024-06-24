@@ -17,6 +17,8 @@ params:
   - name: capacity
   - name: phases
     advanced: true
+  - name: pvusestrategy
+    choice: ['hotwater','heating','hotwater_then_heating']
   - name: icon
     default: car
     advanced: true
@@ -28,6 +30,9 @@ render: |
   {{- end }}
   {{- if .icon }}
   icon: {{ .icon }}
+  {{- end }}
+  {{- if .pvusestrategy }}
+  pvusestrategy: {{ .pvusestrategy }}
   {{- end }}
   capacity: {{ .capacity }}
   {{- if .phases }}

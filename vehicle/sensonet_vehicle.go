@@ -11,7 +11,8 @@ type Sensonet_vehicle struct {
 	*embed
 	//	vehicle *Vehicle
 	//	Title string
-	conn *sensonet.Connection
+	PvUseStrategy string
+	conn          *sensonet.Connection
 }
 
 func init() {
@@ -21,7 +22,8 @@ func init() {
 // NewSensonetVehicleFromConfig creates a new vehicle
 func NewSensonetVehicleFromConfig(other map[string]interface{}) (api.Vehicle, error) {
 	cc := struct {
-		embed `mapstructure:",squash"`
+		embed         `mapstructure:",squash"`
+		PvUseStrategy string
 	}{}
 
 	if err := util.DecodeOther(other, &cc); err != nil {
@@ -29,7 +31,8 @@ func NewSensonetVehicleFromConfig(other map[string]interface{}) (api.Vehicle, er
 	}
 
 	v := &Sensonet_vehicle{
-		embed: &cc.embed,
+		embed:         &cc.embed,
+		PvUseStrategy: cc.PvUseStrategy,
 		//Pointer Sensonet_vehicle.conn is set to point to the connection struct of the charger sensonet
 		conn: sensonet.SensoNetConn,
 	}
@@ -55,6 +58,7 @@ func (v *Sensonet_vehicle) Soc() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	err = v.conn.CheckPVUseStrategy(v.PvUseStrategy)
 	return float64(tt), err
 }
 

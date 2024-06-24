@@ -42,6 +42,7 @@ type Connection struct {
 	cache                    time.Duration
 	currentQuickmode         string
 	quickmodeStarted         time.Time
+	quickmodeStopped         time.Time
 	onoff                    bool
 	quickVetoSetPoint        float32
 	quickVetoExpiresAt       string
@@ -508,6 +509,15 @@ func (d *Connection) TargetTemp() (float64, error) {
 	return float64(res.Hotwater.HotwaterTemperatureSetpoint), nil
 }
 
+// CheckPVUseStrategy is called bei vaillant-ebus_vehicle.Soc()
+func (d *Connection) CheckPVUseStrategy(vehicleStrategy string) error {
+	if d.pvUseStrategy != vehicleStrategy {
+		d.log.INFO.Printf("Changing PVUseStrategy of charger from '%s' to '%s'", d.pvUseStrategy, vehicleStrategy)
+		d.pvUseStrategy = vehicleStrategy
+	}
+	return nil
+}
+
 func (d *Connection) Status() (api.ChargeStatus, error) {
 	status := api.StatusB
 	if time.Now().After(d.tokenExpiresAt) {
@@ -530,11 +540,16 @@ func (c *Connection) WhichQuickMode() (int, error) {
 	//c.log.DEBUG.Println("PV Use Strategy = ", c.pvUseStrategy)
 	c.log.DEBUG.Printf("Checking if hot water boost possible. Operation Mode = %s, temperature setpoint= %02.2f, live temperature= %02.2f", res.Hotwater.OperationMode, res.Hotwater.HotwaterTemperatureSetpoint, res.Hotwater.HotwaterLiveTemperature)
 	hotWaterBoostPossible := false
-	if (res.Hotwater.HotwaterLiveTemperature <= res.Hotwater.HotwaterTemperatureSetpoint-5 || c.pvUseStrategy == PVUSESTRATEGY_HOTWATER) &&
+	// For pvUseStrategy='hotwater', a hotwater boost is possible when hotwater storage temperature is less than the temperature setpoint.
+	// For other pvUseStrategies, a hotwater boost is possible when hotwater storage temperature is less than the temperature setpoint minus 5°C
+	addOn := -5.0
+	if c.pvUseStrategy == PVUSESTRATEGY_HOTWATER {
+		addOn = 0.0
+	}
+	if res.Hotwater.HotwaterLiveTemperature < res.Hotwater.HotwaterTemperatureSetpoint+addOn &&
 		res.Hotwater.OperationMode == OPERATIONMODE_TIME_CONTROLLED {
 		hotWaterBoostPossible = true
 	}
-
 	heatingQuickVetoPossible := false
 	for _, z := range res.Zones {
 		if z.Index == c.heatingZone {
