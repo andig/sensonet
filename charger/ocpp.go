@@ -30,6 +30,7 @@ type OCPP struct {
 	meterValuesSample string
 	timeout           time.Duration
 	phaseSwitching    bool
+	autoStart, noStop bool
 	chargingRateUnit  types.ChargingRateUnitType
 	lp                loadpoint.API
 }
@@ -53,6 +54,8 @@ func NewOCPPFromConfig(other map[string]interface{}) (api.Charger, error) {
 		BootNotification *bool
 		GetConfiguration *bool
 		ChargingRateUnit string
+		AutoStart        bool
+		NoStop           bool
 	}{
 		Connector:        1,
 		IdTag:            defaultIdTag,
@@ -70,7 +73,7 @@ func NewOCPPFromConfig(other map[string]interface{}) (api.Charger, error) {
 
 	c, err := NewOCPP(cc.StationId, cc.Connector, cc.IdTag,
 		cc.MeterValues, cc.MeterInterval,
-		boot, noConfig,
+		boot, noConfig, cc.AutoStart, cc.NoStop,
 		cc.ConnectTimeout, cc.Timeout, cc.ChargingRateUnit)
 	if err != nil {
 		return c, err
@@ -104,7 +107,7 @@ func NewOCPPFromConfig(other map[string]interface{}) (api.Charger, error) {
 // NewOCPP creates OCPP charger
 func NewOCPP(id string, connector int, idtag string,
 	meterValues string, meterInterval time.Duration,
-	boot, noConfig bool,
+	boot, noConfig, autoStart, noStop bool,
 	connectTimeout, timeout time.Duration,
 	chargingRateUnit string,
 ) (*OCPP, error) {
@@ -130,12 +133,15 @@ func NewOCPP(id string, connector int, idtag string,
 	if err != nil {
 		return nil, err
 	}
+	conn.AllowStart(autoStart)
 
 	c := &OCPP{
-		log:     log,
-		conn:    conn,
-		idtag:   idtag,
-		timeout: timeout,
+		log:       log,
+		conn:      conn,
+		idtag:     idtag,
+		autoStart: autoStart,
+		noStop:    noStop,
+		timeout:   timeout,
 	}
 
 	c.log.DEBUG.Printf("waiting for chargepoint: %v", connectTimeout)
@@ -287,6 +293,13 @@ func (c *OCPP) hasMeasurement(val types.Measurand) bool {
 	return slices.Contains(strings.Split(c.meterValuesSample, ","), string(val))
 }
 
+func (c *OCPP) effectiveIdTag() string {
+	if idtag := c.conn.IdTag(); idtag != "" {
+		return idtag
+	}
+	return c.idtag
+}
+
 // configure updates CP configuration
 func (c *OCPP) configure(key, val string) error {
 	rc := make(chan error, 1)
@@ -325,17 +338,51 @@ func (c *OCPP) Enabled() (bool, error) {
 	return c.enabled, nil
 }
 
-// Enable implements the api.Charger interface
-func (c *OCPP) Enable(enable bool) (err error) {
-	rc := make(chan error, 1)
+func (c *OCPP) Enable(enable bool) error {
 	txn, err := c.conn.TransactionID()
+	if err != nil && enable {
+		return err
+	}
 
-	defer func() {
-		if err == nil {
-			c.enabled = enable
+	// if transaction is not running, disable is a no-op
+	if txn != 0 || enable {
+		if c.autoStart || (c.noStop && txn != 0) {
+			err = c.enableAutostart(enable)
+		} else {
+			err = c.enableRemote(enable)
 		}
-	}()
+	}
 
+	if err == nil {
+		c.enabled = enable
+	}
+
+	return err
+}
+
+// enableAutostart enables auto-started session
+func (c *OCPP) enableAutostart(enable bool) error {
+	var current float64
+	if enable {
+		current = c.current
+	}
+
+	return c.updatePeriod(current)
+}
+
+// enableRemote enables session by using RemoteStart/Stop
+func (c *OCPP) enableRemote(enable bool) error {
+	txn, err := c.conn.TransactionID()
+	if err != nil {
+		return err
+	}
+
+	if enable {
+		c.conn.AllowStart(true)
+		defer c.conn.AllowStart(false)
+	}
+
+	rc := make(chan error, 1)
 	if enable {
 		if txn > 0 {
 			// we have the transaction id, treat as enabled
@@ -348,7 +395,7 @@ func (c *OCPP) Enable(enable bool) (err error) {
 			}
 
 			rc <- err
-		}, c.idtag, func(request *core.RemoteStartTransactionRequest) {
+		}, c.effectiveIdTag(), func(request *core.RemoteStartTransactionRequest) {
 			connector := c.conn.ID()
 			request.ConnectorId = &connector
 			request.ChargingProfile = c.getTxChargingProfile(c.current, 0)
@@ -397,14 +444,14 @@ func (c *OCPP) setChargingProfile(profile *types.ChargingProfile) error {
 
 // updatePeriod sets a single charging schedule period with given current
 func (c *OCPP) updatePeriod(current float64) error {
-	// current period can only be updated if transaction is active
-	if enabled, err := c.Enabled(); err != nil || !enabled {
-		return err
-	}
-
 	txn, err := c.conn.TransactionID()
 	if err != nil {
 		return err
+	}
+
+	// current period can only be updated if transaction is active
+	if txn == 0 {
+		return nil
 	}
 
 	current = math.Trunc(10*current) / 10
@@ -490,11 +537,10 @@ func (c *OCPP) phases1p3p(phases int) error {
 	return c.updatePeriod(c.current)
 }
 
-// // Identify implements the api.Identifier interface
-// Unless charger uses vehicle ID as idTag in authorize.req it is not possible to implement this in ocpp1.6
-// func (c *OCPP) Identify() (string, error) {
-// 	return "", errors.New("not implemented")
-// }
+// Identify implements the api.Identifier interface
+func (c *OCPP) Identify() (string, error) {
+	return c.conn.IdTag(), nil
+}
 
 var _ loadpoint.Controller = (*OCPP)(nil)
 

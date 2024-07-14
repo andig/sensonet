@@ -22,8 +22,9 @@ type Connector struct {
 	cp    *CP
 	id    int
 
-	status  *core.StatusNotificationRequest
-	statusC chan struct{}
+	allowStart bool
+	status     *core.StatusNotificationRequest
+	statusC    chan struct{}
 
 	meterUpdated time.Time
 	measurements map[types.Measurand]types.SampledValue
@@ -31,6 +32,7 @@ type Connector struct {
 
 	txnCount int // change initial value to the last known global transaction. Needs persistence
 	txnId    int
+	idTag    string
 }
 
 func NewConnector(log *util.Logger, id int, cp *CP, timeout time.Duration) (*Connector, error) {
@@ -59,6 +61,18 @@ func (conn *Connector) ChargePoint() *CP {
 
 func (conn *Connector) ID() int {
 	return conn.id
+}
+
+func (conn *Connector) IdTag() string {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	return conn.idTag
+}
+
+func (conn *Connector) AllowStart(allow bool) {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	conn.allowStart = allow
 }
 
 func (conn *Connector) TriggerMessageRequest(feature remotetrigger.MessageTrigger, f ...func(request *remotetrigger.TriggerMessageRequest)) {
