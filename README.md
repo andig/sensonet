@@ -21,8 +21,8 @@ All other persons should visit github.com/evcc-io/evcc. There you can also find 
 
 ## How it works
 (1) vaillant-ebus
-To use this extension a charger section for 'vaillant-ebus' and a vehicle section for 'vaillant-ebus_vehicle' have to be added to evcc.yaml. If an energy meter like Shelly 3EM is present for the Vaillant heatpump, then a meter section has to be added to evcc.yaml as well.
-The vaillant-ebus charger, the vaillant-ebus_vehicle vehicle and the energy meter have to be combinated as a loadpoint in the yaml file.
+To use this extension a charger section for 'vaillant-ebus' and a vehicle section for 'vaillant-ebus_vehicle' have to be added to evcc.yaml. 
+evcc is able to read the current power consumption of the heat pump via ebusd and to display it in the web interface. Thus no external metering device like Shelly 3EM is necessary. (But if an energy meter like Shelly 3EM is present for the Vaillant heatpump and shall be used, then a meter section has to be added to evcc.yaml as well. The vaillant-ebus charger, the vaillant-ebus_vehicle vehicle and the energy meter have to be combinated as a loadpoint in the yaml file.)
 
 The vaillant-ebus charge module initiates a telnet connection to the ebusd which can reside on the same machine or on another machine in the local network. Via 'read' commands, information about the heat pump state is obtained. The vaillant-ebus_vehicle module is used to present some information like SoC (=current temperature) and TargetSoC (=temperature setpoint) to the loadpoint module of evcc.
 
@@ -54,7 +54,10 @@ this to the loadpoint module of evcc.
 If the loadpoint module tells the sensonet module to stop a charging session, then the sensonet module sends a "cancel hotwater boost" or "cancel zone quick veto" to the myVaillant portal via http DELETE request.
 It happens, that it takes a few minutes before the json system report from the myVaillant portal reflects an initiated or canceled boost or quick veto. Don't worry!
 
-## Warning
+## Custom ebus message definition file 15.ctlv2.csv
+At the moment, some ebus message definitions needed for the initiation of a zone quick veto are missing in the "official" ebus configuration files under https://cfg.ebusd.eu/ 
+Therefore the config files have to be downloaded from https://cfg.ebusd.eu/ to a local path and 15.ctlv2.csv has to be substituted by the file https://github.com/WulfgarW/ebusd-configuration/blob/master/ebusd-2.1.x/de/vaillant/15.ctlv2.csv 
 
+## Warning
 This extensions are still unstable and in first tests.
 Feedback of beta testers is welcome.

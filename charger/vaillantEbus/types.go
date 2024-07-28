@@ -25,9 +25,9 @@ const EBUSDREAD_ZONE_OPMODE = "OpMode"                               //To be add
 const EBUSDREAD_ZONE_SFMODE = "SFMode"                               //To be added by the zone prefix
 const EBUSDREAD_ZONE_ROOMTEMP = "RoomTemp"                           //To be added by the zone prefix
 const EBUSDREAD_ZONE_QUICKVETOTEMP = "QuickVetoTemp"                 //To be added by the zone prefix
-const EBUSDREAD_ZONE_QUICKVETOENDDATE = "QVEndDate"                  //To be added by the zone prefix
-const EBUSDREAD_ZONE_QUICKVETOENDTIME = "QVEndTime"                  //To be added by the zone prefix
-const EBUSDREAD_ZONE_QUICKVETODURATION = "QVDuration"                //To be added by the zone prefix
+const EBUSDREAD_ZONE_QUICKVETOENDDATE = "QuickVetoEndDate"           //To be added by the zone prefix
+const EBUSDREAD_ZONE_QUICKVETOENDTIME = "QuickVetoEndTime"           //To be added by the zone prefix
+const EBUSDREAD_ZONE_QUICKVETODURATION = "QuickVetoDuration"         //To be added by the zone prefix
 
 //To be deleted
 //const AUTH_BASE_URL string = "https://identity.vaillant-group.com/auth/realms"

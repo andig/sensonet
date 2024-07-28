@@ -108,7 +108,6 @@ func (c *Connection) ebusdScanResult() string {
 	var message, messageLine string
 	var err error
 	fmt.Fprintf(c.ebusdConn, "scan result\n")
-	//message, err := bufio.NewReader(c.ebusdConn).ReadString('\n')
 	message = ""
 	err = nil
 	for err == nil {
@@ -130,10 +129,8 @@ func (c *Connection) ebusdFindControllerForSFMode() string {
 		return ""
 	}
 	var message string
-	//message, err = bufio.NewReader(c.ebusdConn).ReadString('\n')
 	message, err = c.ebusdReadBuffer.ReadString('\n')
 	if err != nil {
-		//err = fmt.Errorf("could not receive from ebusd. error: %s", err)
 		c.log.ERROR.Printf("Error when reading from ebusd: %s", err)
 		return ""
 	}
@@ -171,13 +168,11 @@ func (c *Connection) ebusdRead(searchString string, notOlderThan int) (string, e
 	}
 	message := "ERR: no signal"
 	readTry := 0
-	//buf := bufio.NewReader(c.ebusdConn)
 	buf := c.ebusdReadBuffer
 
 	for message[:min(4, len(message))] == "ERR:" && readTry < 3 {
 		_, err = fmt.Fprintf(c.ebusdConn, ebusCommand+searchString+"\n")
 		if err != nil {
-			//err = fmt.Errorf("could not write to ebusd. error: %s", err)
 			c.log.ERROR.Printf("Error sending read command to ebusd: %s", err)
 			if isNetConnClosedErr(err) {
 				c.log.DEBUG.Println("Connection to ebusd is closed. Trying to reopen it.")
@@ -191,7 +186,6 @@ func (c *Connection) ebusdRead(searchString string, notOlderThan int) (string, e
 						c.log.ERROR.Printf("Error sending read command to ebusd: %s", err)
 						return "", err
 					}
-					//buf = bufio.NewReader(c.ebusdConn)
 					buf = c.ebusdReadBuffer
 					readTry = 0
 				}
@@ -201,7 +195,6 @@ func (c *Connection) ebusdRead(searchString string, notOlderThan int) (string, e
 		}
 		message, err = buf.ReadString('\n')
 		if err != nil && readTry > 1 {
-			//err = fmt.Errorf("could not receive from ebusd. error: %s", err)
 			c.log.ERROR.Printf("Error when reading from ebusd: %s", err)
 			return "", err
 		}
@@ -249,16 +242,13 @@ func (c *Connection) ebusdWrite(message string) error {
 	c.ebusdReadBuffer = *bufio.NewReader(c.ebusdConn)
 	_, err = fmt.Fprintf(c.ebusdConn, "write "+message+"\n")
 	if err != nil {
-		//err = fmt.Errorf("could not write to ebusd. error: %s", err)
 		c.log.ERROR.Printf("Error writing to ebusd: %s", err)
 		return err
 	}
 	var ebusAnswer string
-	//ebusAnswer, err = bufio.NewReader(c.ebusdConn).ReadString('\n')
 	ebusAnswer, err = c.ebusdReadBuffer.ReadString('\n')
 	fmt.Println("Antwort auf write:", ebusAnswer)
 	if err != nil {
-		//err = fmt.Errorf("could not receive from ebusd. error: %s", err)
 		c.log.ERROR.Printf("Error when reading answer after ebusd write: %s", err)
 		return err
 	}
@@ -272,7 +262,6 @@ func (c *Connection) refreshEbusdConnection() error {
 	var err error
 	c.ebusdConn, err = net.Dial("tcp", c.ebusdAddress)
 	if err != nil {
-		//err = fmt.Errorf("could not dial up to ebusd. error: %s", err)
 		return err
 	}
 	c.ebusdReadBuffer = *bufio.NewReader(c.ebusdConn)
@@ -283,19 +272,12 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 	var err error
 	var findResult string
 	var convertedValue float64
-
-	if !reset && time.Now().Add(c.getSystemUpdateInterval).Before(c.lastGetSystemAt) {
+	if !reset && time.Now().Before(c.lastGetSystemAt.Add(c.getSystemUpdateInterval)) {
 		// Use relData that are already present instead of reading current data from ebusd
 		return nil
 	}
-	//Empty read buffer to resync request to and response from ebusd
-	/*err = c.ebusdEmptyReadBuffer()
-	if err != nil {
-		return err
-	}*/
 	c.ebusdConn, err = net.Dial("tcp", c.ebusdAddress)
 	if err != nil {
-		//err = fmt.Errorf("could not dial up to ebusd. error: %s", err)
 		return err
 	}
 	defer c.ebusdConn.Close()
@@ -347,7 +329,7 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 		}
 	}
 
-	//Getting General status Data
+	//Getting General Status Data
 	findResult, err = c.ebusdRead(EBUSDREAD_STATUS_TIME, -1)
 	if err != nil {
 		return err
@@ -377,7 +359,7 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 		return err
 	} else {
 		convertedValue, err = strconv.ParseFloat(findResult, 64)
-		if err != nil || convertedValue <= 0 {
+		if err != nil || convertedValue < 0 {
 			c.log.DEBUG.Printf("Value '%s' returnd from ebusd for %s invalid and therefore ignored", findResult, EBUSDREAD_STATUS_CURRENTCONSUMEDPOWER)
 		} else {
 			relData.Status.CurrentConsumedPower = convertedValue
@@ -477,7 +459,6 @@ func (c *Connection) getSystem(relData *VaillantRelDataStruct, reset bool) error
 
 	//Set timestamp lastGetSystemAt and return nil error
 	c.lastGetSystemAt = time.Now()
-	//c.ebusdConn.Close() //Only to test, if refreshEbusdConnection works
 	return nil
 }
 
@@ -500,7 +481,6 @@ func (c *Connection) getSFMode(relData *VaillantRelDataStruct) error {
 		relData.Hotwater.HwcSFMode = findResult
 	}
 
-	//Getting General status Data
 	//Getting Zone Data
 	i := 0 //Index for relData.zones[]
 	zonePrefix := fmt.Sprintf("z%01d", c.heatingZone)
@@ -525,6 +505,7 @@ func (c *Connection) getSFMode(relData *VaillantRelDataStruct) error {
 	c.log.DEBUG.Println("Timestamp for end of zone quick veto: ", relData.Zones[i].QuickVetoEndDate+" "+relData.Zones[i].QuickVetoEndTime)
 	return nil
 }
+
 func (d *Connection) Phases() int {
 	return d.phases
 }
@@ -581,7 +562,7 @@ func (d *Connection) TargetTemp() (float64, error) {
 
 // CheckPVUseStrategy is called bei vaillant-ebus_vehicle.Soc()
 func (d *Connection) CheckPVUseStrategy(vehicleStrategy string) error {
-	if d.pvUseStrategy != vehicleStrategy {
+	if d.pvUseStrategy != vehicleStrategy && vehicleStrategy != "not_set" {
 		d.log.INFO.Printf("Changing PVUseStrategy of charger from '%s' to '%s'", d.pvUseStrategy, vehicleStrategy)
 		d.pvUseStrategy = vehicleStrategy
 	}

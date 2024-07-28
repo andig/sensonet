@@ -18,9 +18,10 @@ params:
   - name: phases
     advanced: true
   - name: pvusestrategy
-    choice: ['hotwater','heating','hotwater_then_heating']
+    choice: ['hotwater','heating','hotwater_then_heating','not_set']
+    default: 'not_set'
   - name: icon
-    default: car
+    default: heater
     advanced: true
   - preset: vehicle-identify
 render: |

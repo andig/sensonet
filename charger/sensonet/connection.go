@@ -511,7 +511,7 @@ func (d *Connection) TargetTemp() (float64, error) {
 
 // CheckPVUseStrategy is called bei vaillant-ebus_vehicle.Soc()
 func (d *Connection) CheckPVUseStrategy(vehicleStrategy string) error {
-	if d.pvUseStrategy != vehicleStrategy {
+	if d.pvUseStrategy != vehicleStrategy && vehicleStrategy != "not_set" {
 		d.log.INFO.Printf("Changing PVUseStrategy of charger from '%s' to '%s'", d.pvUseStrategy, vehicleStrategy)
 		d.pvUseStrategy = vehicleStrategy
 	}
