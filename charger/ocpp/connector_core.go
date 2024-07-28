@@ -52,7 +52,10 @@ func (conn *Connector) MeterValues(request *core.MeterValuesRequest) (*core.Mete
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
-	if request.TransactionId != nil && conn.txnId == 0 {
+	if request.TransactionId != nil && conn.txnId == 0 && conn.status != nil &&
+		(conn.status.Status == core.ChargePointStatusCharging ||
+			conn.status.Status == core.ChargePointStatusSuspendedEV ||
+			conn.status.Status == core.ChargePointStatusSuspendedEVSE) {
 		conn.log.DEBUG.Printf("hijacking transaction: %d", *request.TransactionId)
 		conn.txnId = *request.TransactionId
 	}
@@ -86,19 +89,15 @@ func (conn *Connector) StartTransaction(request *core.StartTransactionRequest) (
 		return res, nil
 	}
 
+	conn.txnCount++
+	conn.txnId = conn.txnCount
+	conn.idTag = request.IdTag
+
 	res := &core.StartTransactionConfirmation{
 		IdTagInfo: &types.IdTagInfo{
-			Status: types.AuthorizationStatusBlocked,
+			Status: types.AuthorizationStatusAccepted,
 		},
-	}
-
-	if conn.allowStart {
-		conn.txnCount++
-		conn.txnId = conn.txnCount
-		conn.idTag = request.IdTag
-
-		res.IdTagInfo.Status = types.AuthorizationStatusAccepted
-		res.TransactionId = conn.txnId
+		TransactionId: conn.txnId,
 	}
 
 	return res, nil
@@ -140,6 +139,7 @@ func (conn *Connector) StopTransaction(request *core.StopTransactionRequest) (*c
 	}
 
 	conn.txnId = 0
+	conn.idTag = ""
 
 	res := &core.StopTransactionConfirmation{
 		IdTagInfo: &types.IdTagInfo{
