@@ -88,6 +88,7 @@ require (
 	github.com/spf13/viper v1.20.0-alpha.6
 	github.com/stretchr/testify v1.9.0
 	github.com/teslamotors/vehicle-command v0.2.0
+	github.com/thanhpk/randstr v1.0.6
 	github.com/traefik/yaegi v0.16.1
 	github.com/tv42/httpunix v0.0.0-20191220191345-2ba4b9c3382c
 	github.com/volkszaehler/mbmd v0.0.0-20240727104742-3191c0dbfb9e
