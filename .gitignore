@@ -41,5 +41,8 @@ asset-stats.html
 /test-results/
 /playwright-report/
 /playwright/.cache/
+.gitpod.yml
+/evcc.db
+
 debug_sensonet_reldata.txt
 debug_sensonet_system.txt
